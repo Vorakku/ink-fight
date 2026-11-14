@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { render } from './game/render.ts'
-import { DT, Sim } from './game/sim.ts'
+import { render, TEAM_COLORS } from './game/render.ts'
+import { BLUE, DT, FFA, RED, Sim } from './game/sim.ts'
 import { buildSprites, CATEGORIES, UNITS } from './game/units.ts'
 
 const TABS = [...CATEGORIES, 'Terrain'] as const
 type Tab = (typeof TABS)[number]
 const BUSH = -1, PUDDLE = -2 // brush ids for the terrain tools; fighters use their UNITS index
 const HIDERS = UNITS.filter((u) => u.hides).map((u) => u.name).join(', ')
-const brushesIn = (tab: Tab) => (tab === 'Terrain' ? [BUSH, PUDDLE] : UNITS.flatMap((u, i) => (u.category === tab ? [i] : [])))
+const TEAMS = [[RED, 'Red', 'r'], [BLUE, 'Blue', 'b'], [FFA, 'Free-for-all', 'f']] as const // side for the next fighter placed, and its key
+const brushesIn = (tab: Tab) => (tab === 'Terrain' ? [BUSH, PUDDLE] : UNITS.flatMap((u, i) => (u.category === tab && !u.internal ? [i] : [])))
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -19,6 +20,13 @@ export default function App() {
   const [tab, setTab] = useState<Tab>(UNITS[0].category)
   const [paused, setPaused] = useState(false)
   const [counts, setCounts] = useState<number[]>(() => UNITS.map(() => 0))
+  const [team, setTeam] = useState<number>(RED)
+  const [started, setStarted] = useState(false) // setup until Start: the page holds still while you scribble
+  const [sides, setSides] = useState([0, 0]) // red and blue fighters on the page
+  const teamRef = useRef(team)
+  const startedRef = useRef(started)
+  teamRef.current = team
+  startedRef.current = started
   const selectedRef = useRef(selected)
   const pausedRef = useRef(paused)
   const tabRef = useRef(tab)
@@ -45,7 +53,7 @@ export default function App() {
     const drop = (x: number, y: number) => {
       const b = selectedRef.current
       if (b < 0) sim.addTerrain(x, y, -1 - b)
-      else sim.spawn(b, x + Math.random() * 8 - 4, y + Math.random() * 8 - 4)
+      else sim.spawn(b, x + Math.random() * 8 - 4, y + Math.random() * 8 - 4, teamRef.current)
     }
     const down = (e: PointerEvent) => {
       canvas.setPointerCapture(e.pointerId)
@@ -77,7 +85,8 @@ export default function App() {
       const n = Number(e.key) // 1-9 picks a brush in the open tab
       const inTab = brushesIn(tabRef.current)
       if (n >= 1 && n <= inTab.length) setSelected(inTab[n - 1])
-      else if (e.key === 'p') setPaused((p) => !p)
+      else if (e.key === 'p' && startedRef.current) setPaused((p) => !p)
+      else for (const [id, , k] of TEAMS) if (e.key === k) setTeam(id)
     }
     window.addEventListener('keydown', key)
 
@@ -87,11 +96,15 @@ export default function App() {
       raf = requestAnimationFrame(frame)
       acc += Math.min(0.1, (now - last) / 1000)
       last = now
-      if (pausedRef.current) acc = DT
+      if (pausedRef.current || !startedRef.current) { acc = DT; sim.settle() }
       else while (acc >= DT) { sim.step(); acc -= DT }
       render(ctx, sim, sprites, acc / DT, dpr)
-      const now_ = sim.counts.join()
-      if (now_ !== shown) { shown = now_; setCounts(Array.from(sim.counts)) }
+      const now_ = sim.counts.join() + '|' + sim.teamCounts[RED] + ',' + sim.teamCounts[BLUE]
+      if (now_ !== shown) {
+        shown = now_
+        setCounts(Array.from(sim.counts))
+        setSides([sim.teamCounts[RED], sim.teamCounts[BLUE]])
+      }
     }
     raf = requestAnimationFrame(frame)
 
@@ -113,15 +126,27 @@ export default function App() {
     <>
       <canvas ref={canvasRef} className="stage" />
       <h1 className="title">Inkfight</h1>
-      {total === 0 && <p className="hint">Pick a fighter, then scribble on the page. Different fighters brawl on sight.</p>}
+      {total === 0 && <p className="hint">Pick a team and a fighter, scribble on the page, then press Start.</p>}
 
       <div className="actions">
-        <button onClick={() => sim.clear()}>Clear</button>
-        <button onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? 'Play' : 'Pause'}</button>
+        <div className="teams" role="group" aria-label="Team for new fighters">
+          {TEAMS.map(([id, label, k]) => (
+            <button key={label} aria-pressed={team === id} title={`${label} (${k})`} onClick={() => setTeam(id)}>
+              {id !== FFA && <i className="dot" style={{ background: TEAM_COLORS[id] }} />}{label}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => { sim.clear(); setStarted(false); setPaused(false) }}>Clear</button>
+        {started
+          ? <button onClick={() => setPaused(!paused)} aria-pressed={paused}>{paused ? 'Play' : 'Pause'}</button>
+          : <button className="start" onClick={() => setStarted(true)}>Start</button>}
       </div>
 
       {total > 0 && (
         <ul className="tally">
+          {sides[0] + sides[1] > 0 && TEAMS.slice(0, 2).map(([id, label]) => (
+            <li key={label}><i className="dot" style={{ background: TEAM_COLORS[id] }} /><b>{sides[id]}</b> {label}</li>
+          ))}
           {UNITS.map((u, i) => counts[i] > 0 && (
             <li key={u.key}><img src={icons[i]} alt="" /><b>{counts[i]}</b> {u.name}</li>
           ))}

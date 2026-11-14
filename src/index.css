@@ -87,6 +87,51 @@ button:focus-visible {
   font-size: 18px;
 }
 
+.actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100vw - 32px);
+}
+
+/* team for the next fighter: a little segmented strip */
+.teams {
+  display: flex;
+  gap: 4px;
+}
+
+.actions .teams button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  box-shadow: 1px 2px 0 var(--ink);
+  opacity: 0.6;
+}
+
+.actions .teams button[aria-pressed='true'] {
+  opacity: 1;
+  background: #ffe45c;
+}
+
+.actions .start {
+  background: #c6f25c;
+}
+
+.dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+}
+
+.tally .dot {
+  width: 16px;
+  height: 16px;
+  margin: 0 5px;
+}
+
 .tally {
   position: absolute;
   left: 70px;
@@ -187,6 +232,8 @@ button:focus-visible {
   .tally { bottom: 140px; }
   .fighters { gap: 6px; min-height: 60px; }
   .tabs button { padding: 2px 8px; font-size: 14px; }
+  .actions { top: 52px; gap: 6px; }
+  .actions button, .actions .teams button { padding: 4px 9px; font-size: 15px; }
   .fighter { width: 62px; flex-basis: 62px; font-size: 12px; }
   .fighter img { width: 40px; height: 40px; }
 }

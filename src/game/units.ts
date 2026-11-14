@@ -1,6 +1,6 @@
 export type Kind = 'melee' | 'ranged' | 'boom' | 'fire' | 'sing' | 'beam'
 
-export const CATEGORIES = ['Food', 'Animals', 'People', 'Mythical', 'Water'] as const
+export const CATEGORIES = ['Food', 'Animals', 'People', 'Mythical', 'Water', 'Bug'] as const
 export type Category = (typeof CATEGORIES)[number]
 
 export interface UnitDef {
@@ -16,7 +16,7 @@ export interface UnitDef {
   dmg: number
   range: number // px beyond touching; for 'boom' it is the blast radius, for 'sing' how far the ballad carries
   cd: number // seconds between attacks
-  knock: number // knockback impulse, px/s
+  knock: number // knockback impulse, px/s; negative pulls the victim toward the attacker
   spacing: number // px between units along a brush stroke
   draw: (c: CanvasRenderingContext2D) => void
   // optional quirks
@@ -26,6 +26,7 @@ export interface UnitDef {
   thorns?: number // damage dealt back to anyone who punches it
   lifesteal?: number // share of melee damage healed back
   hatch?: string // key of the unit that pops out when it dies
+  band?: number // sprite-px y of the team bandanna, where the top-edge guess lands on a wing, crest or prop
   shot?: string // colour of its projectile
   hides?: boolean // turns invisible in bushes and ambushes from them
   heal?: number // fire that lands leaves a ring that heals its own kind this much
@@ -35,7 +36,7 @@ export interface UnitDef {
   carry?: boolean // with grab: instead of shaking its catch, carries it to the next enemy and throws it at them
   eats?: number // swallows whatever its bite kills: this much more max hp per meal, healed to full, and it grows; enough meals make it a king that raises little ones
   rebirth?: Partial<UnitDef> // first death is an egg, which hatches into a frantic chick with these stats, which grows back up
-  projectile?: 'pearl' | 'kernel' | 'notification' | 'bubble' | 'spear' | 'water' | 'shuriken'
+  projectile?: 'pearl' | 'kernel' | 'notification' | 'bubble' | 'spear' | 'water' | 'shuriken' | 'web'
   burst?: number // projectiles in a small fan, each with the listed damage
   orbit?: number // preferred distance while circling an enemy and throwing
   waterbound?: boolean // stays inside painted water, including when shoved
@@ -46,10 +47,40 @@ export interface UnitDef {
   pulse?: number // radius of a single pose-and-knockback attack
   leap?: 'slam' | 'scrap' // repeating rump-first landing, or one opening cat brawl
   regen?: number // hp per second recovered while resting between attacks
+  scare?: number // chance a peck sends the victim running in panic for a moment
+  launch?: number // melee hits throw the victim this many px; it bowls over whoever it lands on
+  bully?: boolean // ignores whoever is closest and goes after the toughest fighter it can see
+  lawn?: number // plants a grass tuft behind itself every this many px walked, up to a dozen per life
+  brine?: number // its explosion leaves this many puddle stamps
+  pops?: number // while burning, fires this many kernels per second in random directions
+  grudge?: number // chases only the first fighter that hurts it; each further hit from them adds this much speed and damage, up to five. Shares its lock with leap and dash, so never give one fighter both
+  swell?: number // each bite makes it bigger and slower; at this many bites it pops
+  topple?: number // knockback at least this strong puts it on its back for a moment
+  blind?: number // hits leave the victim stumbling about blind for this many seconds
+  crash?: number // wired (double speed, double pokes) for a few seconds, then asleep this long; repeat
+  wildfire?: boolean // its burns spread to whoever the burning fighter bumps into, and send the victim running in panic
+  distract?: number // hits make the victim stop and scroll its phone for this many seconds; it spreads by contact
+  latch?: number // chance a hit turns into hugging the victim's leg for a couple of seconds: rides along, slows and nibbles. Shares its lock with leap, dash and grudge
+  squish?: number // takes no knockback and can't be thrown; springs this share of the shove back at the attacker (a hard one throws them)
+  spotlight?: number // its pose makes every enemy this close come at it for a moment (needs pulse)
+  fetch?: boolean // throws its only projectile and must pick it up from where it lands before throwing again
+  alt?: (c: CanvasRenderingContext2D) => void // a second look the renderer swaps in while its quirk says so: empty-handed, curled up, promoted
+  stack?: ((c: CanvasRenderingContext2D) => void)[] // drawings from one pancake to full height; each lost share of hp knocks one off as a syrup spot, and it speeds up
+  tether?: number // a hit ties the victim to it with a strand for this many seconds: it can't get away and it gets drained. Shares its lock with leap, dash, grudge and latch
+  roll?: number // when cornered, curls up and rolls through enemies at this speed
+  stink?: number // sprays a cloud this many px wide that enemies are shoved out of and hurt by; recharges
+  promote?: number // after this many kills it stops fighting and makes its own kind nearby attack twice as fast
+  ant?: boolean // gathers with its side to build colonies, without being consumed
+  colony?: boolean // stationary anthill; built by ants, never painted from the tray
+  bug?: 'millipede' | 'car' | 'mantis' | 'spider' | 'nest'
+  building?: boolean // stationary, cannot be carried or shoved
+  internal?: boolean // created by fighters rather than painted from the tray
+  prey?: boolean // an explicitly biological body spiders may collect
 }
 
 type C = CanvasRenderingContext2D
 const INK = '#221f33'
+const deadEyes = new WeakSet<C>() // only contexts baking the still, fallen sprites
 
 // Sprites are drawn in a 48x48 box, facing right, feet at (24, 44).
 function ellipse(c: C, x: number, y: number, rx: number, ry: number, fill: string) {
@@ -88,6 +119,13 @@ function poly(c: C, fill: string, ...p: number[]) {
 function eye(c: C, x: number, y: number, r = 2.8, pupil = 1.3) {
   c.save()
   c.lineWidth = 1.4
+  if (deadEyes.has(c)) {
+    c.strokeStyle = INK
+    line(c, x - r * 0.7, y - r * 0.7, x + r * 0.7, y + r * 0.7)
+    line(c, x - r * 0.7, y + r * 0.7, x + r * 0.7, y - r * 0.7)
+    c.restore()
+    return
+  }
   ellipse(c, x, y, r, r, '#fff')
   c.beginPath()
   c.arc(x + r * 0.3, y, pupil, 0, Math.PI * 2)
@@ -147,7 +185,8 @@ function goose(c: C) {
   c.stroke()
 }
 
-function intern(c: C) {
+// Shared by the intern and his promoted self: body, the tie he already wears, head and bed hair.
+function internBase(c: C) {
   legs(c, 20, 28)
   box(c, 15, 22, 18, 18, 7, '#f4f1ea')
   c.save()
@@ -165,6 +204,10 @@ function intern(c: C) {
   c.fillStyle = '#5b4636'
   c.fill()
   c.stroke()
+}
+
+function intern(c: C) {
+  internBase(c)
   c.save() // dead-tired eyes with bags
   c.lineWidth = 1.4
   c.fillStyle = INK
@@ -181,6 +224,35 @@ function intern(c: C) {
   c.restore()
   box(c, 32, 26, 12, 4.5, 1.5, '#3d6fd8') // stapler
   line(c, 32, 33, 44, 33, 32, 30.5)
+}
+
+function internManager(c: C) { // promoted: same tie, a clipboard and a coffee, and a whole new attitude
+  internBase(c)
+  c.save()
+  c.lineWidth = 1.4
+  line(c, 19.3, 16, 23.7, 16) // half-lidded, very senior
+  line(c, 25.8, 16, 30.2, 16)
+  dot(c, 21.5, 17, 1.1, INK)
+  dot(c, 28, 17, 1.1, INK)
+  c.beginPath() // smug
+  c.arc(25, 19.5, 2.2, Math.PI * 0.15, Math.PI * 0.85)
+  c.stroke()
+  c.restore()
+  box(c, 6, 24, 9, 12, 1.5, '#f4f1ea') // clipboard
+  c.save()
+  c.lineWidth = 1
+  line(c, 8, 28, 13, 28)
+  line(c, 8, 31, 13, 31)
+  c.beginPath() // mug handle
+  c.arc(40.5, 29, 2.5, -Math.PI * 0.5, Math.PI * 0.5)
+  c.stroke()
+  c.restore()
+  box(c, 33, 25, 7, 8, 1.5, '#fff') // coffee somebody else made
+  c.save()
+  c.strokeStyle = '#b9a69e'
+  c.lineWidth = 1.2
+  line(c, 36.5, 23, 35.5, 20, 37, 17)
+  c.restore()
 }
 
 function nana(c: C) {
@@ -287,21 +359,23 @@ function chili(c: C) {
   c.restore()
 }
 
-function pancake(c: C) {
-  legs(c, 19, 29)
-  ellipse(c, 24, 35, 12, 4.5, '#e2a95a')
-  ellipse(c, 24, 30, 12, 4.5, '#ecb96b')
-  ellipse(c, 24, 25, 12, 4.5, '#e2a95a')
-  ellipse(c, 24, 23.5, 9, 3, '#8a4b1c') // syrup
-  c.save()
-  c.strokeStyle = '#8a4b1c'
-  c.lineWidth = 3
-  line(c, 32, 25, 32, 31)
-  c.restore()
-  box(c, 21, 18.5, 6, 4, 1, '#ffe45c')
-  eye(c, 20, 30.5, 2.2, 1)
-  eye(c, 28, 30.5, 2.2, 1)
-  smile(c, 24, 33.5, 2)
+// Flapjack with n pancakes left. The face lives on the bottom one so it survives every loss.
+function pancakeStack(n: number) {
+  return (c: C) => {
+    legs(c, 19, 29)
+    for (let k = 0; k < n; k++) ellipse(c, 24, 35 - k * 5, 12, 4.5, k & 1 ? '#ecb96b' : '#e2a95a')
+    const top = 35 - (n - 1) * 5
+    ellipse(c, 24, top - 1.5, 9, 3, '#8a4b1c') // syrup
+    c.save()
+    c.strokeStyle = '#8a4b1c'
+    c.lineWidth = 3
+    line(c, 32, top, 32, top + 5)
+    c.restore()
+    box(c, 21, top - 6.5, 6, 4, 1, '#ffe45c') // butter
+    eye(c, 20, 34.5, 2.2, 1)
+    eye(c, 28, 34.5, 2.2, 1)
+    smile(c, 24, 37.3, 1.6)
+  }
 }
 
 function egg(c: C) {
@@ -320,6 +394,17 @@ function hedgehog(c: C) {
   dot(c, 37.5, 33, 1.8, INK)
   eye(c, 31, 30.5, 2.2, 1.1)
   line(c, 28, 27, 33.5, 28.5)
+}
+
+function hedgehogBall(c: C) { // curled up: all spikes, no apologies
+  const p: number[] = []
+  for (let k = 0; k < 24; k++) {
+    const a = k * Math.PI / 12, r = k & 1 ? 9.5 : 14
+    p.push(24 + Math.cos(a) * r, 30 + Math.sin(a) * r)
+  }
+  poly(c, '#6b4a2f', ...p)
+  ellipse(c, 25, 31, 6.5, 5.5, '#f0d2ad') // a bit of belly showing
+  dot(c, 29.5, 31, 1.5, INK)
 }
 
 function mozzie(c: C) {
@@ -520,14 +605,8 @@ function toddler(c: C) {
   c.fillRect(23.7, 26.8, 1.8, 1.6)
 }
 
-function dad(c: C) {
-  legs(c, 20, 28)
-  line(c, 32, 27, 38, 19) // throwing arm
-  c.save() // the sandal
-  c.translate(40, 15)
-  c.rotate(-0.5)
-  ellipse(c, 0, 0, 5.5, 2.6, '#ff8fb1')
-  c.restore()
+// Everything above the throwing arm: shirt, head, sunglasses, moustache.
+function dadTop(c: C) {
   box(c, 14, 21, 20, 18, 7, '#4caf8a')
   ellipse(c, 24, 14, 7.5, 7.5, SKIN)
   box(c, 18.5, 11, 5, 3.5, 1, INK) // sunglasses
@@ -538,6 +617,23 @@ function dad(c: C) {
   c.lineWidth = 3
   line(c, 20.5, 18, 28, 18)
   c.restore()
+}
+
+function dad(c: C) {
+  legs(c, 20, 28)
+  line(c, 32, 27, 38, 19) // throwing arm
+  c.save() // the sandal
+  c.translate(40, 15)
+  c.rotate(-0.5)
+  ellipse(c, 0, 0, 5.5, 2.6, '#ff8fb1')
+  c.restore()
+  dadTop(c)
+}
+
+function dadBarefoot(c: C) { // the sandal is out there somewhere; the arm hangs empty
+  legs(c, 20, 28)
+  line(c, 32, 28, 37, 34)
+  dadTop(c)
 }
 
 function dragon(c: C) {
@@ -973,150 +1069,283 @@ function cat(c: C) {
   c.restore()
 }
 
+function ant(c: C) {
+  c.save()
+  c.lineWidth = 1.5
+  for (let k = 0; k < 3; k++) {
+    const x = 16 + k * 7
+    line(c, x, 33, x - 5, 38, x - 7, 43)
+    line(c, x + 1, 34, x + 5, 39, x + 8, 42) // six legs, all late for the same meeting
+  }
+  c.restore()
+  ellipse(c, 13, 31, 9, 7, '#9b4535')
+  ellipse(c, 25, 31, 6, 5, '#ad5640')
+  ellipse(c, 35, 26, 7, 7, '#ad5640')
+  ellipse(c, 11, 29, 4, 2, 'rgba(255,255,255,.2)')
+  line(c, 32, 20, 28, 14, 25, 14)
+  line(c, 37, 19, 40, 13, 44, 12) // antennae: the entire planning department
+  eye(c, 37, 24, 2.3, 1)
+  line(c, 35, 21, 40, 22)
+  line(c, 40, 29, 44, 30, 42, 33) // tiny, deeply serious mandibles
+}
+
+function anthill(c: C) {
+  poly(c, '#b98b61', 4, 42, 8, 35, 13, 32, 18, 23, 23, 20, 29, 25, 34, 34, 40, 36, 45, 43)
+  poly(c, '#d2aa7c', 8, 38, 16, 30, 20, 24, 23, 22, 22, 30, 18, 36)
+  ellipse(c, 28, 37, 5.5, 6, '#4e342d') // one suspiciously productive little doorway
+  c.save()
+  c.lineWidth = 1
+  line(c, 10, 40, 15, 38)
+  line(c, 26, 27, 30, 30)
+  line(c, 35, 38, 39, 40)
+  dot(c, 20, 34, 1, '#805b43')
+  dot(c, 17, 40, 0.9, '#805b43')
+  c.restore()
+}
+
+function millipede(c: C) {
+  c.save()
+  c.lineWidth = 1.2
+  for (let k = 0; k < 7; k++) {
+    const x = 7 + k * 4.6, y = 34 - Math.sin(k * 0.5) * 3
+    line(c, x, y, x - 2, 41, x + 1, 43)
+    line(c, x + 1, y, x + 4, 39, x + 6, 40)
+    ellipse(c, x, y - 3, 4.1, 5, k & 1 ? '#bd7952' : '#a96343')
+  }
+  c.restore()
+  ellipse(c, 38, 27, 6, 6, '#c78558')
+  line(c, 36, 22, 34, 16, 31, 15)
+  line(c, 40, 21, 43, 16, 46, 17)
+  eye(c, 40, 26, 2.4, 1.1)
+}
+
+function millipedeWheel(c: C) {
+  c.save()
+  c.lineWidth = 1.3
+  for (let k = 0; k < 14; k++) {
+    const a = k * Math.PI / 7
+    line(c, 24 + Math.cos(a) * 12, 29 + Math.sin(a) * 12, 24 + Math.cos(a) * 16, 29 + Math.sin(a) * 16)
+  }
+  c.restore()
+  ellipse(c, 24, 29, 12.5, 12.5, '#ac6748')
+  c.beginPath()
+  c.moveTo(34, 29)
+  c.bezierCurveTo(34, 16, 13, 17, 15, 30)
+  c.bezierCurveTo(17, 41, 34, 37, 29, 27)
+  c.bezierCurveTo(25, 20, 19, 26, 24, 30)
+  c.stroke()
+  eye(c, 34, 26, 2.2, 1)
+}
+
+function bugCar(c: C) {
+  c.save()
+  for (const [x, y] of [[11, 25], [36, 25], [11, 38], [36, 38]]) {
+    c.save()
+    c.translate(x - 24 * 0.43, y - 29 * 0.43)
+    c.scale(0.43, 0.43)
+    millipedeWheel(c)
+    c.restore()
+  }
+  c.restore()
+  poly(c, '#78bfc1', 5, 33, 8, 22, 17, 21, 21, 12, 33, 14, 38, 23, 44, 26, 44, 35, 5, 35)
+  poly(c, '#e6f6f5', 21, 16, 30, 17, 34, 23, 18, 22)
+  line(c, 25, 17, 24, 23)
+  box(c, 3, 33, 43, 4, 1, '#e1ce9d')
+  eye(c, 37, 27, 2.4, 1)
+  line(c, 38, 32, 42, 31)
+  line(c, 7, 23, 3, 18)
+}
+
+function mantis(c: C) {
+  c.save()
+  c.strokeStyle = '#4d7a3c'
+  c.lineWidth = 2
+  line(c, 22, 28, 13, 37, 9, 43)
+  line(c, 26, 29, 31, 37, 37, 43)
+  c.restore()
+  ellipse(c, 20, 31, 6, 9, '#82b95b')
+  poly(c, '#a2d06c', 23, 31, 25, 19, 30, 17, 29, 31)
+  line(c, 28, 24, 36, 31, 39, 20, 34, 24)
+  line(c, 25, 25, 30, 32, 33, 22, 29, 26)
+  poly(c, '#9cce68', 21, 12, 39, 12, 32, 21)
+  eye(c, 24, 14, 2.6, 1)
+  eye(c, 36, 14, 2.6, 1)
+  line(c, 26, 10, 23, 4, 19, 3)
+  line(c, 33, 10, 37, 4, 41, 4)
+}
+
+function spider(c: C) {
+  c.save()
+  c.lineWidth = 1.7
+  for (let k = 0; k < 4; k++) {
+    line(c, 19 + k * 3, 30, 7 + k * 3, 26 + k * 3, 3 + k * 4, 36 + k * 2)
+    line(c, 24 + k * 2, 31, 40 + k, 24 + k * 4, 45 - k, 34 + k * 3)
+  }
+  c.restore()
+  ellipse(c, 20, 28, 10, 9, '#77618c')
+  ellipse(c, 17, 25, 4.5, 2.4, '#9d87b0')
+  ellipse(c, 32, 30, 7, 6, '#9277a6')
+  eye(c, 31, 27, 3, 1.3)
+  eye(c, 37, 28, 2.4, 1.1)
+  line(c, 32, 34, 35, 35, 38, 33)
+}
+
+function spiderNest(c: C) {
+  c.save()
+  c.lineWidth = 1.2
+  c.strokeStyle = '#8e8797'
+  poly(c, '#ebe8ee', 3, 41, 10, 30, 14, 18, 24, 13, 35, 23, 39, 33, 46, 42)
+  for (let k = 0; k < 5; k++) line(c, 24, 15, 5 + k * 9, 41)
+  line(c, 12, 26, 20, 29, 32, 26, 36, 29)
+  line(c, 8, 34, 18, 36, 31, 33, 41, 36)
+  ellipse(c, 27, 36, 6, 6, '#4c3e5b')
+  c.restore()
+}
+
 export const UNITS: UnitDef[] = [
   {
-    key: 'toast', name: 'Sir Toast', blurb: 'Tough, slow, deeply offended', category: 'Food',
-    color: '#d99a3d', kind: 'melee', r: 11, hp: 140, speed: 55, dmg: 14, range: 4, cd: 0.7, knock: 90, spacing: 26, draw: toast,
+    key: 'toast', name: 'Sir Toast', blurb: 'Remembers who hit him first. Gets toastier and faster every time they do it again', category: 'Food',
+    color: '#d99a3d', kind: 'melee', r: 11, hp: 140, speed: 55, dmg: 14, range: 4, cd: 0.7, knock: 90, spacing: 26, draw: toast, grudge: 0.15,
   },
   {
-    key: 'goose', name: 'Honk', blurb: 'Fast, fragile, has no fear', category: 'Animals',
-    color: '#9aa7b8', kind: 'melee', r: 9, hp: 45, speed: 150, dmg: 7, range: 3, cd: 0.3, knock: 40, spacing: 22,  draw: goose,
+    key: 'goose', name: 'Honk', blurb: 'Pecks you once. You run for your life', category: 'Animals', prey: true,
+    color: '#9aa7b8', kind: 'melee', r: 9, hp: 45, speed: 150, dmg: 7, range: 3, cd: 0.3, knock: 40, spacing: 22, draw: goose, scare: 0.35,
   },
   {
-    key: 'intern', name: 'Unpaid Intern', blurb: 'Fires staples from a safe distance', category: 'People',
-    color: '#3d6fd8', kind: 'ranged', r: 9, hp: 50, speed: 65, dmg: 12, range: 190, cd: 1, knock: 60, spacing: 22, draw: intern,
+    key: 'intern', name: 'Unpaid Intern', blurb: 'Two kills and he is management. Now the other interns do twice the work', category: 'People',
+    color: '#3d6fd8', kind: 'ranged', r: 9, hp: 50, speed: 65, dmg: 12, range: 190, cd: 1, knock: 60, spacing: 22, draw: intern, promote: 2, alt: internManager,
   },
   {
-    key: 'nana', name: 'Nana', blurb: 'One handbag swing sends you flying', category: 'People',
-    color: '#9b6bc7', kind: 'melee', r: 10, hp: 110, speed: 38, dmg: 45, range: 5, cd: 1.4, knock: 520, spacing: 24, draw: nana,
+    key: 'nana', name: 'Nana', blurb: 'One handbag swing and you\'re airmail. Mind who you land on', category: 'People',
+    color: '#9b6bc7', kind: 'melee', r: 10, hp: 110, speed: 38, dmg: 30, range: 5, cd: 1.4, knock: 520, spacing: 24, draw: nana, launch: 200,
   },
   {
-    key: 'pickle', name: 'Kaboom Pickle', blurb: 'Runs in screaming, then explodes', category: 'Food',
-    color: '#5aa83a', kind: 'boom', r: 9, hp: 30, speed: 110, dmg: 70, range: 55, cd: 0, knock: 380, spacing: 24, draw: pickle, hides: true,
+    key: 'pickle', name: 'Kaboom Pickle', blurb: 'Runs in screaming, explodes, leaves a brine puddle behind', category: 'Food',
+    color: '#5aa83a', kind: 'boom', r: 9, hp: 30, speed: 110, dmg: 70, range: 55, cd: 0, knock: 380, spacing: 24, draw: pickle, hides: true, brine: 3,
   },
   {
-    key: 'chili', name: 'Señor Chili', blurb: 'So spicy his slaps set you on fire', category: 'Food',
-    color: '#e03a2e', kind: 'melee', r: 9, hp: 60, speed: 95, dmg: 6, range: 3, cd: 0.5, knock: 40, spacing: 22, draw: chili, burn: 3, hides: true,
+    key: 'chili', name: 'Señor Chili', blurb: 'So spicy it spreads. Burning victims run screaming into their friends', category: 'Food',
+    color: '#e03a2e', kind: 'melee', r: 9, hp: 60, speed: 95, dmg: 6, range: 3, cd: 0.5, knock: 40, spacing: 22, draw: chili, burn: 2.5, hides: true, wildfire: true,
   },
   {
-    key: 'pancake', name: 'Flapjack', blurb: 'Flings syrup that gums up your legs', category: 'Food',
-    color: '#e2a95a', kind: 'ranged', r: 11, hp: 90, speed: 45, dmg: 6, range: 170, cd: 1.1, knock: 20, spacing: 26, draw: pancake, slow: 2.5, shot: '#8a4b1c',
+    key: 'pancake', name: 'Flapjack', blurb: 'Every big hit knocks a pancake off. Shorter, stickier, faster', category: 'Food',
+    color: '#e2a95a', kind: 'ranged', r: 11, hp: 90, speed: 45, dmg: 8, range: 170, cd: 1.1, knock: 20, spacing: 26, draw: pancakeStack(3), shot: '#8a4b1c', stack: [pancakeStack(1), pancakeStack(2), pancakeStack(3)],
   },
   {
     key: 'egg', name: 'Eggbert', blurb: 'Crack him and an angry Honk pops out', category: 'Food',
     color: '#f2d98a', kind: 'melee', r: 9, hp: 55, speed: 70, dmg: 6, range: 3, cd: 0.6, knock: 30, spacing: 22, draw: egg, hatch: 'goose',
   },
   {
-    key: 'hedgehog', name: 'Spike', blurb: 'Punch him and you get pricked back', category: 'Animals',
-    color: '#8a6a4a', kind: 'melee', r: 9, hp: 80, speed: 60, dmg: 8, range: 3, cd: 0.7, knock: 30, spacing: 22, draw: hedgehog, thorns: 8, hides: true,
+    key: 'hedgehog', name: 'Spike', blurb: 'Prick him and get pricked. Corner him and he goes full bowling ball', category: 'Animals', prey: true,
+    color: '#8a6a4a', kind: 'melee', r: 9, hp: 80, speed: 60, dmg: 8, range: 3, cd: 0.7, knock: 30, spacing: 22, draw: hedgehog, thorns: 8, hides: true, roll: 260, alt: hedgehogBall,
   },
   {
-    key: 'mozzie', name: 'Mozzie', blurb: 'Tiny, fast, drinks your health', category: 'Animals',
-    color: '#c0392b', kind: 'melee', r: 6, hp: 22, speed: 170, dmg: 5, range: 2, cd: 0.35, knock: 5, spacing: 16, draw: mozzie, lifesteal: 1,
+    key: 'mozzie', name: 'Mozzie', blurb: 'Drinks your health, sip by sip, until it pops', category: 'Bug', prey: true,
+    color: '#c0392b', kind: 'melee', r: 6, hp: 22, speed: 170, dmg: 5, range: 2, cd: 0.35, knock: 5, spacing: 16, draw: mozzie, lifesteal: 1, swell: 6,
   },
   {
-    key: 'llama', name: 'Spit Llama', blurb: 'Long-range spit, zero respect', category: 'Animals',
-    color: '#d9c7a3', kind: 'ranged', r: 10, hp: 70, speed: 60, dmg: 9, range: 240, cd: 0.8, knock: 90, spacing: 24, draw: llama, shot: '#9fd3e8',
+    key: 'llama', name: 'Spit Llama', blurb: 'Spits in your eye from across the page. Good luck finding anyone now', category: 'Animals', prey: true,
+    color: '#d9c7a3', kind: 'ranged', r: 10, hp: 70, speed: 60, dmg: 9, range: 240, cd: 0.8, knock: 90, spacing: 24, draw: llama, shot: '#9fd3e8', blind: 1.3,
   },
   {
-    key: 'skunk', name: 'Stinky', blurb: 'Goes off like a stink bomb; survivors stagger', category: 'Animals',
-    color: '#7cb342', kind: 'boom', r: 9, hp: 40, speed: 90, dmg: 15, range: 75, cd: 0, knock: 120, spacing: 24, draw: skunk, slow: 4, hides: true,
+    key: 'skunk', name: 'Stinky', blurb: 'Does not blow up any more. Just makes the area unlivable', category: 'Animals', prey: true,
+    color: '#7cb342', kind: 'melee', r: 9, hp: 70, speed: 90, dmg: 6, range: 3, cd: 0.7, knock: 20, spacing: 24, draw: skunk, hides: true, stink: 60,
   },
   {
-    key: 'snake', name: 'Noodle', blurb: 'Swallows what it kills and grows. Leave it unwatched and it crowns itself and raises an army of little noodles', category: 'Animals',
+    key: 'snake', name: 'Noodle', blurb: 'Swallows what it kills and grows. Leave it unwatched and it crowns itself and raises an army of little noodles', category: 'Animals', prey: true,
     color: SNAKE, kind: 'melee', r: 8, hp: 70, speed: 85, dmg: 11, range: 3, cd: 0.55, knock: 20, spacing: 22, draw: snake, eats: 30, hides: true,
   },
   {
-    key: 'rex', name: 'Tiny Arms', blurb: 'Bites, shakes, flings. Cannot clap', category: 'Animals',
+    key: 'rex', name: 'Tiny Arms', blurb: 'Bites, shakes, flings. Cannot clap', category: 'Animals', prey: true,
     color: REX, kind: 'melee', r: 14, hp: 380, speed: 62, dmg: 26, range: 5, cd: 0.9, knock: 120, spacing: 56, draw: rex, size: 1.5, grab: 0.35,
   },
   {
-    key: 'gymbro', name: 'Gym Bro', blurb: 'Every punch pumps him back up. Skipped leg day', category: 'People',
-    color: '#ff7a59', kind: 'melee', r: 11, hp: 160, speed: 60, dmg: 18, range: 4, cd: 0.8, knock: 140, spacing: 26, draw: gymbro, lifesteal: 0.5,
+    key: 'gymbro', name: 'Gym Bro', blurb: 'Hits like a truck. Skipped leg day, so one good shove turns him turtle', category: 'People',
+    color: '#ff7a59', kind: 'melee', r: 11, hp: 160, speed: 60, dmg: 26, range: 4, cd: 1, knock: 220, spacing: 26, draw: gymbro, topple: 150,
   },
   {
-    key: 'toddler', name: 'Toddler', blurb: 'Sticky hands slow down whoever they grab', category: 'People',
-    color: '#7ec8e3', kind: 'melee', r: 7, hp: 35, speed: 135, dmg: 4, range: 2, cd: 0.3, knock: 10, spacing: 18, draw: toddler, slow: 1.5, hides: true,
+    key: 'toddler', name: 'Toddler', blurb: 'Hugs your leg and will not let go. Also bites', category: 'People',
+    color: '#7ec8e3', kind: 'melee', r: 7, hp: 35, speed: 135, dmg: 4, range: 2, cd: 0.3, knock: 10, spacing: 18, draw: toddler, latch: 0.4, hides: true,
   },
   {
-    key: 'dad', name: 'Sandal Dad', blurb: 'Throws a sandal with terrifying accuracy', category: 'People',
-    color: '#4caf8a', kind: 'ranged', r: 10, hp: 85, speed: 50, dmg: 16, range: 150, cd: 1.3, knock: 420, spacing: 24, draw: dad, shot: '#ff8fb1',
+    key: 'dad', name: 'Sandal Dad', blurb: 'One sandal, terrifying aim. Then a long, awkward hop to go get it', category: 'People',
+    color: '#4caf8a', kind: 'ranged', r: 10, hp: 85, speed: 50, dmg: 16, range: 150, cd: 0.6, knock: 420, spacing: 24, draw: dad, shot: '#ff8fb1', fetch: true, alt: dadBarefoot,
   },
   {
-    key: 'dragon', name: 'Scorch', blurb: 'Huge. Breathes scribbly fire that keeps burning', category: 'Mythical',
+    key: 'dragon', name: 'Scorch', blurb: 'Huge. Breathes scribbly fire that keeps burning', category: 'Mythical', prey: true,
     color: '#3fae6b', kind: 'fire', r: 16, hp: 700, speed: 42, dmg: 5, range: 95, cd: 0.15, knock: 25, spacing: 70, draw: dragon, burn: 3.5, size: 1.7,
   },
   {
-    key: 'phoenix', name: 'Encore', blurb: 'Fire that heals her flock. Dies dramatically, comes back as a furious chick. Once', category: 'Mythical',
+    key: 'phoenix', name: 'Encore', blurb: 'Fire that heals her flock. Dies dramatically, comes back as a furious chick. Once', category: 'Mythical', prey: true,
     color: '#ff6b2c', kind: 'fire', r: 12, hp: 200, speed: 70, dmg: 3, range: 75, cd: 0.15, knock: 10, spacing: 44, draw: phoenix, burn: 2, size: 1.25, heal: 10,
     rebirth: { kind: 'melee', hp: 70, speed: 190, dmg: 4, range: 3, cd: 0.16, knock: 15, burn: 1.5 },
   },
   {
-    key: 'unicorn', name: 'Pointy', blurb: 'Spots you from across the page, charges, and pokes you into next week', category: 'Mythical',
+    key: 'unicorn', name: 'Pointy', blurb: 'Spots you from across the page, charges, and pokes you into next week', category: 'Mythical', prey: true,
     color: '#ff7eb6', kind: 'melee', r: 11, hp: 150, speed: 70, dmg: 12, range: 4, cd: 0.6, knock: 60, spacing: 30, draw: unicorn, size: 1.15, charge: 90,
   },
   {
-    key: 'pegasus', name: 'Sparklebutt', blurb: 'Flies right up to you, turns round, and lets the rainbow do the talking', category: 'Mythical',
-    color: '#9fd0ff', kind: 'beam', r: 10, hp: 110, speed: 150, dmg: 3, range: 130, cd: 0.15, knock: 15, spacing: 34, draw: pegasus, size: 1.15, flies: [pegasusBody, pegasusWing],
+    key: 'pegasus', name: 'Sparklebutt', blurb: 'Turns round, clenches for dear life, and fires a rainbow that sends it skidding', category: 'Mythical', prey: true,
+    color: '#9fd0ff', kind: 'beam', r: 10, hp: 110, speed: 150, dmg: 32, range: 620, cd: 2.2, knock: 100, spacing: 34, draw: pegasus, size: 1.15, flies: [pegasusBody, pegasusWing],
   },
   {
-    key: 'griffin', name: 'Special Delivery', blurb: 'Claws you, or picks you up, flies you to your friend and introduces you at speed', category: 'Mythical',
+    key: 'griffin', name: 'Special Delivery', blurb: 'Claws you, or picks you up, flies you to your friend and introduces you at speed', category: 'Mythical', prey: true,
     color: '#dba24a', kind: 'melee', r: 13, hp: 260, speed: 120, dmg: 16, range: 4, cd: 0.7, knock: 70, spacing: 50, draw: griffin, size: 1.4, grab: 0.4, carry: true, flies: [griffinBody, griffinWing],
   },
   {
-    key: 'siren', name: 'Karaoke Shelly', blurb: 'Opens with a ballad nobody can resist. Closes with death metal', category: 'Water',
+    key: 'siren', name: 'Karaoke Shelly', blurb: 'Opens with a ballad nobody can resist. Closes with death metal', category: 'Water', prey: true,
     color: '#2bb8a6', kind: 'sing', r: 10, hp: 90, speed: 40, dmg: 7, range: 220, cd: 0.2, knock: 45, spacing: 40, draw: siren,
   },
   {
-    key: 'boba', name: 'Boba Menace', blurb: 'Weaponised tapioca. Your legs are now on backorder', category: 'Food',
-    color: '#bd8b65', kind: 'ranged', r: 10, hp: 75, speed: 55, dmg: 8, range: 195, cd: 0.85, knock: 35, spacing: 26, draw: boba, slow: 2, projectile: 'pearl',
+    key: 'boba', name: 'Boba Menace', blurb: 'Pearls on a string. Reels you in for a closer sip', category: 'Food',
+    color: '#bd8b65', kind: 'ranged', r: 10, hp: 75, speed: 55, dmg: 8, range: 195, cd: 0.85, knock: -160, spacing: 26, draw: boba, projectile: 'pearl',
   },
   {
-    key: 'pizza', name: 'Cheesed', blurb: 'Steals your health with a cheese pull. Deeply unbrie-lievable', category: 'Food',
-    color: '#ffc667', kind: 'melee', r: 10, hp: 95, speed: 70, dmg: 13, range: 13, cd: 0.75, knock: 35, spacing: 26, draw: pizza, lifesteal: 0.65, slow: 0.8,
+    key: 'pizza', name: 'Cheesed', blurb: 'Ties you up in cheese and slurps your health through it', category: 'Food',
+    color: '#ffc667', kind: 'melee', r: 10, hp: 95, speed: 70, dmg: 13, range: 13, cd: 0.75, knock: 35, spacing: 26, draw: pizza, tether: 2.5,
   },
   {
-    key: 'mochi', name: 'Squish Issue', blurb: 'Hit the mochi. Become the problem. Damage bounces back', category: 'Food',
-    color: '#f4b7cd', kind: 'melee', r: 11, hp: 150, speed: 42, dmg: 5, range: 3, cd: 0.9, knock: 85, spacing: 28, draw: mochi, thorns: 12,
+    key: 'mochi', name: 'Squish Issue', blurb: 'Hit the mochi and it squishes. Then it un-squishes into you', category: 'Food',
+    color: '#f4b7cd', kind: 'melee', r: 11, hp: 150, speed: 42, dmg: 5, range: 3, cd: 0.9, knock: 85, spacing: 28, draw: mochi, squish: 1,
   },
   {
-    key: 'espresso', name: 'Depresso', blurb: 'No motivation, all acceleration. Charges you into tomorrow', category: 'Food',
-    color: '#957362', kind: 'melee', r: 9, hp: 55, speed: 100, dmg: 8, range: 3, cd: 0.5, knock: 25, spacing: 24, draw: espresso, charge: 65,
+    key: 'espresso', name: 'Depresso', blurb: 'Three seconds of pure caffeine. Then a nap, wherever it is', category: 'Food',
+    color: '#957362', kind: 'melee', r: 9, hp: 55, speed: 100, dmg: 8, range: 3, cd: 0.5, knock: 25, spacing: 24, draw: espresso, crash: 2,
   },
   {
-    key: 'popcorn', name: 'Pop Off', blurb: 'Three hot takes per serving. All of them projectiles', category: 'Food',
-    color: '#f17986', kind: 'ranged', r: 10, hp: 65, speed: 60, dmg: 6, range: 165, cd: 1, knock: 45, spacing: 26, draw: popcorn, burst: 3, projectile: 'kernel',
+    key: 'popcorn', name: 'Pop Off', blurb: 'Three hot takes per serving. Set it on fire and it never shuts up', category: 'Food',
+    color: '#f17986', kind: 'ranged', r: 10, hp: 65, speed: 60, dmg: 6, range: 165, cd: 1, knock: 45, spacing: 26, draw: popcorn, burst: 3, projectile: 'kernel', pops: 8,
   },
   {
-    key: 'doomscroller', name: 'Doomscroller', blurb: 'Sends notifications until your legs enter low power mode', category: 'People',
-    color: '#6676a8', kind: 'ranged', r: 9, hp: 60, speed: 48, dmg: 7, range: 210, cd: 0.9, knock: 20, spacing: 24, draw: doomscroller, slow: 1.6, projectile: 'notification',
+    key: 'doomscroller', name: 'Doomscroller', blurb: 'Every notification is contagious. Soon the whole crowd is scrolling', category: 'People',
+    color: '#6676a8', kind: 'ranged', r: 9, hp: 60, speed: 48, dmg: 7, range: 210, cd: 0.9, knock: 20, spacing: 24, draw: doomscroller, distract: 1.6, projectile: 'notification',
   },
   {
-    key: 'replyguy', name: 'Reply Guy', blurb: 'Actually sends three replies. Actually nobody asked', category: 'People',
-    color: '#6e9bc7', kind: 'ranged', r: 9, hp: 65, speed: 65, dmg: 5, range: 180, cd: 0.9, knock: 65, spacing: 24, draw: replyGuy, burst: 3, projectile: 'bubble',
+    key: 'replyguy', name: 'Reply Guy', blurb: 'Skips everyone nearby to reply to the biggest account on the page', category: 'People',
+    color: '#6e9bc7', kind: 'ranged', r: 9, hp: 65, speed: 65, dmg: 5, range: 180, cd: 0.9, knock: 65, spacing: 24, draw: replyGuy, burst: 3, projectile: 'bubble', bully: true,
   },
   {
-    key: 'maincharacter', name: 'Main Character', blurb: 'Needs personal space for the fit check. Makes it everyone else\'s problem', category: 'People',
-    color: '#ed91bb', kind: 'melee', r: 10, hp: 105, speed: 65, dmg: 13, range: 38, cd: 1.5, knock: 230, spacing: 30, draw: mainCharacter, pulse: 58,
+    key: 'maincharacter', name: 'Main Character', blurb: 'Strikes a pose. Everyone nearby has to come and look, then gets shoved', category: 'People',
+    color: '#ed91bb', kind: 'melee', r: 10, hp: 105, speed: 65, dmg: 13, range: 38, cd: 1.5, knock: 230, spacing: 30, draw: mainCharacter, pulse: 58, spotlight: 130,
   },
   {
-    key: 'touchgrass', name: 'Touch Grass', blurb: 'Hides in the lawn, then roots you in a very offline argument', category: 'People',
-    color: '#91a84d', kind: 'melee', r: 9, hp: 80, speed: 80, dmg: 10, range: 5, cd: 0.75, knock: 35, spacing: 24, draw: touchGrass, hides: true, slow: 2,
+    key: 'touchgrass', name: 'Touch Grass', blurb: 'Leaves a lawn everywhere it walks. Hiders are thrilled', category: 'People',
+    color: '#91a84d', kind: 'melee', r: 9, hp: 80, speed: 80, dmg: 12, range: 5, cd: 0.75, knock: 35, spacing: 24, draw: touchGrass, hides: true, lawn: 60,
   },
   {
     key: 'bedrot', name: 'Bed Rot', blurb: 'Heals in the duvet. Pillow-fights anyone who interrupts the lore', category: 'People',
     color: '#8597c3', kind: 'melee', r: 12, hp: 135, speed: 0, dmg: 22, range: 10, cd: 1.6, knock: 160, spacing: 32, draw: bedRot, regen: 8,
   },
   {
-    key: 'centaur', name: 'Horsing Around', blurb: 'Centaurs run circles around you. Spears make the point', category: 'Mythical',
+    key: 'centaur', name: 'Horsing Around', blurb: 'Centaurs run circles around you. Spears make the point', category: 'Mythical', prey: true,
     color: '#ad7954', kind: 'ranged', r: 12, hp: 155, speed: 120, dmg: 14, range: 210, cd: 1.1, knock: 70, spacing: 34, draw: centaur, size: 1.2, orbit: 145, projectile: 'spear',
   },
   {
-    key: 'archerfish', name: 'Spit Take', blurb: 'Stays in the pond. Spits from three business days away', category: 'Water',
+    key: 'archerfish', name: 'Spit Take', blurb: 'Stays in the pond. Spits from three business days away', category: 'Water', prey: true,
     color: '#7fb7c9', kind: 'ranged', r: 10, hp: 65, speed: 50, dmg: 22, range: 620, cd: 1.8, knock: 80, spacing: 30, draw: archerfish, waterbound: true, projectile: 'water',
   },
   {
-    key: 'jellyfish', name: 'Shocktopus', blurb: 'A jellyfish with free X-rays. Your bones did not consent to this cameo', category: 'Water',
+    key: 'jellyfish', name: 'Shocktopus', blurb: 'A jellyfish with free X-rays. Your bones did not consent to this cameo', category: 'Water', prey: true,
     color: '#c7a0de', kind: 'melee', r: 11, hp: 90, speed: 55, dmg: 12, range: 65, cd: 1.2, knock: 20, spacing: 30, draw: jellyfish, waterbound: true, shock: 0.45,
   },
   {
@@ -1128,12 +1357,40 @@ export const UNITS: UnitDef[] = [
     color: '#bd5864', kind: 'melee', r: 10, hp: 145, speed: 75, dmg: 7, range: 30, cd: 2, knock: 55, spacing: 30, draw: samurai, spin: 52,
   },
   {
-    key: 'capybara', name: 'Rear Admiral', blurb: 'Jumps, aims the cheeks, lands the argument. Extremely unbothered', category: 'Animals',
+    key: 'capybara', name: 'Rear Admiral', blurb: 'Jumps, aims the cheeks, lands the argument. Extremely unbothered', category: 'Animals', prey: true,
     color: '#b99269', kind: 'melee', r: 12, hp: 165, speed: 60, dmg: 13, range: 4, cd: 0.9, knock: 65, spacing: 34, draw: capybara, leap: 'slam', size: 1.1,
   },
   {
-    key: 'cat', name: 'Civil Paw', blurb: 'One airborne dust-cloud lawsuit. Then the regular scratch subscription', category: 'Animals',
+    key: 'cat', name: 'Civil Paw', blurb: 'One airborne dust-cloud lawsuit. Then the regular scratch subscription', category: 'Animals', prey: true,
     color: '#cd997c', kind: 'melee', r: 9, hp: 80, speed: 105, dmg: 7, range: 4, cd: 0.4, knock: 25, spacing: 26, draw: cat, leap: 'scrap',
+  },
+  {
+    key: 'ant', name: 'Ant', blurb: 'Ten build an anthill. Then twenty, forty… The workers stay. The neighbours worry', category: 'Bug', prey: true,
+    color: '#ad5640', kind: 'melee', r: 4, hp: 24, speed: 85, dmg: 3, range: 2, cd: 0.45, knock: 8, spacing: 14, size: 0.65, draw: ant, ant: true,
+  },
+  {
+    key: 'anthill', name: 'Anthill', blurb: 'Three seconds of digging. One fresh ant every four seconds. Absolutely no planning permission', category: 'Bug',
+    color: '#b98b61', kind: 'melee', r: 16, hp: 200, speed: 0, dmg: 0, range: 0, cd: 4, knock: 0, spacing: 60, draw: anthill, colony: true, building: true, internal: true, prey: false, band: 25,
+  },
+  {
+    key: 'millipede', name: 'Millipede', blurb: 'Curls up and rolls into trouble. Four wheels make a very questionable car', category: 'Bug',
+    color: '#ad704c', kind: 'melee', r: 9, hp: 65, speed: 200, dmg: 10, range: 3, cd: 0.4, knock: 125, spacing: 30, draw: millipede, alt: millipedeWheel, bug: 'millipede', prey: true, band: 25,
+  },
+  {
+    key: 'car', name: 'Bugmobile', blurb: 'Four millipedes, one driving licence. None of them passed', category: 'Bug',
+    color: '#78bfc1', kind: 'melee', r: 23, hp: 260, speed: 260, dmg: 26, range: 3, cd: 0.4, knock: 240, spacing: 60, size: 1.6, draw: bugCar, bug: 'car', internal: true, prey: false, band: 27,
+  },
+  {
+    key: 'mantis', name: 'Praying Mantis', blurb: 'Brings a guest to fight club. The others wait politely for their turn', category: 'Bug',
+    color: '#82b95b', kind: 'melee', r: 9, hp: 85, speed: 95, dmg: 10, range: 4, cd: 0.6, knock: 30, spacing: 28, draw: mantis, bug: 'mantis', prey: true, band: 14,
+  },
+  {
+    key: 'spider', name: 'Spider', blurb: 'Webs, pounces, wraps the leftovers. Five cocoons and the family gets bigger', category: 'Bug',
+    color: '#9277a6', kind: 'ranged', r: 8, hp: 65, speed: 90, dmg: 8, range: 480, cd: 1.4, knock: 12, spacing: 26, draw: spider, bug: 'spider', prey: true, projectile: 'web', band: 27,
+  },
+  {
+    key: 'nest', name: 'Spider Nest', blurb: 'A silk home with room for five very suspicious parcels', category: 'Bug',
+    color: '#c1b6ce', kind: 'melee', r: 17, hp: 150, speed: 0, dmg: 0, range: 0, cd: 1, knock: 0, spacing: 60, draw: spiderNest, bug: 'nest', building: true, internal: true, prey: false, band: 23,
   },
 ]
 
@@ -1181,7 +1438,12 @@ function leafyBush(c: C, v: number) {
 
 export interface Sprites {
   unit: HTMLCanvasElement[]
+  dead: HTMLCanvasElement[]
+  deadAlt: (HTMLCanvasElement | undefined)[]
+  deadStack: (HTMLCanvasElement[] | undefined)[]
+  deadChick: HTMLCanvasElement
   xray: HTMLCanvasElement[] // white doodle bones clipped to each fighter's dark silhouette
+  char: (HTMLCanvasElement | undefined)[] // a scorched silhouette, faded in over a grudge-holder as it gets angrier
   egg: HTMLCanvasElement // phoenix between lives
   chick: HTMLCanvasElement
   fly: (HTMLCanvasElement[] | undefined)[] // per unit type, for the ones that fly: body (no ground shadow, it hovers) and wing
@@ -1195,6 +1457,8 @@ export interface Sprites {
   note: HTMLCanvasElement // the ballad
   bolt: HTMLCanvasElement // the death metal
   heart: HTMLCanvasElement // floats over a charmed fan
+  alt: (HTMLCanvasElement | undefined)[] // per unit type: its second look, if it has one
+  stack: (HTMLCanvasElement[] | undefined)[] // per unit type: one sprite per pancake count
 }
 
 const SS = 3 // supersample so sprites stay crisp on hi-dpi screens
@@ -1216,7 +1480,7 @@ const inked = (paint: (c: C) => void) =>
     paint(c)
   })
 
-function unitSprite(draw: (c: C) => void, shadow = true) {
+function unitSprite(draw: (c: C) => void, shadow = true, dead = false) {
   return canvas48((c) => {
     c.fillStyle = 'rgba(34,31,51,.16)' // ground shadow
     c.beginPath()
@@ -1226,13 +1490,19 @@ function unitSprite(draw: (c: C) => void, shadow = true) {
     c.lineWidth = 2.2
     c.lineJoin = c.lineCap = 'round'
     c.save()
+    if (dead) deadEyes.add(c)
     draw(c)
+    if (dead) deadEyes.delete(c)
     c.restore()
   })
 }
 
 export function buildSprites(): Sprites {
   return {
+    dead: UNITS.map((u) => unitSprite(u.draw, false, true)),
+    deadAlt: UNITS.map((u) => u.alt ? unitSprite(u.alt, false, true) : undefined),
+    deadStack: UNITS.map((u) => u.stack?.map((draw) => unitSprite(draw, false, true))),
+    deadChick: unitSprite(chick, false, true),
     xray: UNITS.map((u) => {
       const cv = unitSprite(u.draw, false), c = cv.getContext('2d')!
       c.globalCompositeOperation = 'source-in'
@@ -1242,7 +1512,7 @@ export function buildSprites(): Sprites {
       c.strokeStyle = '#f5fbff'
       c.fillStyle = '#f5fbff'
       c.lineWidth = 1.6
-      const animal = u.category === 'Animals' || u.category === 'Mythical' || u.projectile === 'water'
+      const animal = u.category === 'Animals' || u.category === 'Mythical' || u.category === 'Bug' || u.projectile === 'water'
       if (animal) {
         line(c, 10, 30, 30, 30, 33, 20)
         for (const xx of [15, 21, 27]) {
@@ -1260,6 +1530,14 @@ export function buildSprites(): Sprites {
       c.globalCompositeOperation = 'source-over'
       return cv
     }),
+    char: UNITS.map((u) => {
+      if (!u.grudge) return undefined
+      const cv = unitSprite(u.draw, false), c = cv.getContext('2d')!
+      c.globalCompositeOperation = 'source-in'
+      c.fillStyle = '#3a2414'
+      c.fillRect(0, 0, 48, 48)
+      return cv
+    }),
     egg: unitSprite(phoenixEgg),
     chick: unitSprite(chick),
     fly: UNITS.map((u) => u.flies?.map((d) => unitSprite(d, false))),
@@ -1267,6 +1545,8 @@ export function buildSprites(): Sprites {
     rex: [unitSprite(rexBody), unitSprite(rexJaw, false), unitSprite(rexArm, false)],
     bush: [0, 1, 2].map((v) => canvas48((c) => leafyBush(c, v))),
     bushIcon: canvas48((c) => leafyBush(c, 0)),
+    alt: UNITS.map((u) => u.alt && unitSprite(u.alt)),
+    stack: UNITS.map((u) => u.stack?.map((d) => unitSprite(d))),
     puddleIcon: canvas48((c) => { // same look as the pond on the page (water.ts): teal shore, pale shallows, deep middle
       bushShape(c, 0.8, '#72c3cf', PUDDLE)
       bushShape(c, 0, '#9fe4eb', PUDDLE)

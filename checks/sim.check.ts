@@ -1,6 +1,6 @@
 // Self-check, no browser needed: `npm run check`
 import assert from 'node:assert/strict'
-import { Sim } from '../src/game/sim.ts'
+import { BLUE, RED, Sim, TETHER_LEN } from '../src/game/sim.ts'
 import { UNITS } from '../src/game/units.ts'
 
 const sim = new Sim()
@@ -247,22 +247,31 @@ assert.equal(kernels.pn, 3, 'popcorn throws three kernels')
 for (let t = 0; t < 50; t++) kernels.step()
 assert.ok(kernels.hp[snack] < UNITS[unit('toast')].hp, 'kernel fan lands damage')
 
+// Quirks phase 4: the cheese pull is now a strand that holds the victim close and drains it.
 const cheese = scene()
 const slice = cheese.spawn(unit('pizza'), 300, 300)
 const topping = cheese.spawn(unit('toast'), 325, 300)
 cheese.hp[slice] = 40
 cheese.cd[slice] = 0
 cheese.cd[topping] = 100
+for (let t = 0; t < 10 && cheese.tetherT[slice] <= 0; t++) cheese.step()
+assert.ok(cheese.tetherT[slice] > 0 && cheese.tethered(slice) === topping, 'a cheese slap ties the toast up')
+cheese.x[topping] = cheese.x[slice] + 100 // try to wander off
 cheese.step()
-assert.ok(cheese.hp[slice] > 40 && cheese.slowT[topping] > 0, 'cheese pull steals health and leaves sticky feet')
+assert.ok(Math.hypot(cheese.x[topping] - cheese.x[slice], cheese.y[topping] - cheese.y[slice]) <= TETHER_LEN + 1, 'the strand pulls it back')
+const drained = cheese.hp[slice]
+for (let t = 0; t < 31; t++) cheese.step()
+assert.ok(cheese.hp[slice] > drained, 'the pizza drinks through the strand')
 
+// Quirks phase 3: mochi no longer pricks back. It takes the hit, stays put, and springs a hard hitter into the air.
 const squish = scene()
 const cushion = squish.spawn(unit('mochi'), 324, 300)
-const puncher = squish.spawn(unit('toast'), 300, 300)
+const puncher = squish.spawn(unit('gymbro'), 300, 300)
 squish.cd[cushion] = 100
 squish.cd[puncher] = 0
 squish.step()
-assert.ok(squish.hp[cushion] < UNITS[unit('mochi')].hp && squish.hp[puncher] < UNITS[unit('toast')].hp, 'punching mochi reflects damage')
+assert.ok(squish.hp[cushion] < UNITS[unit('mochi')].hp && squish.vx[cushion] < 20, 'mochi is hurt but not knocked back')
+assert.ok(squish.airT[puncher] > 0 && squish.downT[puncher] > 0, 'gym bro is thrown by his own punch, and lands on his back')
 
 // Electrical damage stuns briefly, then releases the victim.
 const zap = scene()
@@ -374,4 +383,335 @@ duvet.hp[sleeper] = 20
 for (let t = 0; t < 60; t++) duvet.step()
 assert.ok(duvet.hp[sleeper] > 27 && duvet.x[sleeper] === 300, 'bed rot recovers in place')
 
-console.log(`ok: ${alive} survivors after ${sim.tick} ticks; roster expansion scenes passed`)
+// Fighter quirks, phase 1 (docs/fighter-quirks/phase-1-quick-wins.md). Each scene is in its own block.
+{ // Honk: a peck that scares sends the victim running from the goose
+  const def = UNITS[unit('goose')], chance = def.scare
+  def.scare = 1
+  const s = scene()
+  const honker = s.spawn(unit('goose'), 300, 300), coward = s.spawn(unit('toast'), 318, 300)
+  s.cd[honker] = 0
+  s.cd[coward] = 100
+  for (let t = 0; t < 30 && s.fearT[coward] <= 0; t++) s.step()
+  assert.ok(s.fearT[coward] > 0, 'a peck scares the toast')
+  const from = s.x[coward]
+  for (let t = 0; t < 20; t++) s.step()
+  def.scare = chance
+  assert.ok(s.x[coward] > from + 5 && s.face[coward] === 1, 'the scared toast turns its back on the goose and runs')
+}
+{ // Nana: the handbag throws what it hits, but only shoves something far bigger than her
+  const s = scene()
+  const nana = s.spawn(unit('nana'), 300, 300), mail = s.spawn(unit('toast'), 318, 300)
+  s.cd[nana] = 0
+  s.cd[mail] = 100
+  s.step()
+  assert.ok(s.airT[mail] > 0, 'a handbag swing sends the toast through the air')
+  const big = scene()
+  const gran = big.spawn(unit('nana'), 300, 300), drake = big.spawn(unit('dragon'), 322, 300)
+  big.cd[gran] = 0
+  big.cd[drake] = 100
+  big.step()
+  assert.ok(big.hp[drake] < UNITS[unit('dragon')].hp && big.airT[drake] === 0, 'a dragon is hit but too big to throw')
+}
+{ // Reply Guy: skips the nearer toast for the toughest fighter in sight
+  const s = scene()
+  const guy = s.spawn(unit('replyguy'), 100, 300)
+  s.spawn(unit('toast'), 220, 300)
+  const boss = s.spawn(unit('dragon'), 600, 300)
+  s.step()
+  assert.equal(s.target[guy], boss, 'reply guy targets the dragon, not the closer toast')
+}
+{ // Touch Grass: plants bushes behind itself as it walks, and does not hide itself in them
+  const s = scene()
+  const walker = s.spawn(unit('touchgrass'), 100, 300)
+  s.cd[s.spawn(unit('toast'), 900, 300)] = 100
+  let exposed = false
+  for (let t = 0; t < 180; t++) {
+    s.step()
+    if (s.bn > 0 && !s.hidden[walker]) exposed = true
+  }
+  assert.ok(s.bn > 0 && s.bT.subarray(0, s.bn).every((kind) => kind === 0), 'touch grass leaves bushes behind')
+  assert.ok(exposed && s.x[walker] > 200, 'its own lawn does not stop it walking')
+}
+{ // Kaboom Pickle: the explosion leaves a puddle where it went off
+  const s = scene()
+  const bomb = unit('pickle')
+  const fuse = s.spawn(bomb, 300, 300)
+  s.cd[s.spawn(unit('toast'), 330, 300)] = 100
+  let bx = 300, by = 300
+  for (let t = 0; t < 120 && s.counts[bomb]; t++) {
+    bx = s.x[fuse]
+    by = s.y[fuse]
+    s.step()
+  }
+  assert.ok(!s.counts[bomb] && s.inWater(bx, by), 'pickle explodes into a brine puddle')
+}
+{ // Pop Off: burning makes it fire kernels with nobody to aim at
+  const def = UNITS[unit('popcorn')], rate = def.pops
+  def.pops = 60 // one a tick, so the check does not depend on luck
+  const s = scene()
+  s.burnT[s.spawn(unit('popcorn'), 300, 300)] = 2
+  s.step()
+  def.pops = rate
+  assert.ok(s.pn > 0, 'a burning popcorn pops without a target')
+}
+
+// Fighter quirks, phase 2 (docs/fighter-quirks/phase-2-timers-and-states.md).
+{ // Sir Toast: the first fighter to hurt him is the only one he chases, until they are gone
+  const s = scene()
+  const sir = s.spawn(unit('toast'), 300, 300), clerk = s.spawn(unit('intern'), 480, 300)
+  s.cd[clerk] = 0
+  for (let t = 0; t < 120 && s.grow[sir] <= 0; t++) s.step()
+  assert.ok(s.grow[sir] > 0, 'a staple starts the grudge')
+  const pest = s.spawn(unit('goose'), s.x[sir] - 20, s.y[sir]) // right next to him, and ignored
+  s.cd[pest] = 100
+  for (let t = 0; t < 30; t++) s.step()
+  assert.equal(s.target[sir], clerk, 'toast keeps after the intern with a goose at his elbow')
+  s.hp[clerk] = 0.01
+  s.burnT[clerk] = 1
+  s.step()
+  s.step()
+  assert.ok(!s.alive[clerk] && s.grow[sir] === 0 && s.target[sir] !== clerk, 'the grudge cools off when the intern is gone')
+}
+{ // Mozzie: the sip that fills it up pops it, and the splash lands on the victim
+  const s = scene()
+  const def = UNITS[unit('mozzie')]
+  const sipper = s.spawn(unit('mozzie'), 300, 300), meal = s.spawn(unit('toast'), 314, 300)
+  s.grow[sipper] = def.swell! - 1
+  s.cd[sipper] = 0
+  s.cd[meal] = 100
+  for (let t = 0; t < 10 && s.alive[sipper]; t++) s.step()
+  assert.ok(!s.alive[sipper], 'a full mozzie pops')
+  assert.ok(s.hp[meal] <= UNITS[unit('toast')].hp - def.dmg * 4 + 0.01, 'the pop splashes more than a bite')
+}
+{ // Gym Bro: a big shove puts him on his back, and he stays there after he lands
+  const s = scene()
+  const gran = s.spawn(unit('nana'), 300, 300), bro = s.spawn(unit('gymbro'), 318, 300)
+  s.cd[gran] = 0
+  s.cd[bro] = 100
+  s.step()
+  assert.ok(s.downT[bro] > 0 && s.airT[bro] > 0, 'the handbag topples him and throws him')
+  for (let t = 0; t < 60 && s.airT[bro] > 0; t++) s.step()
+  const at = s.x[bro]
+  for (let t = 0; t < 20; t++) s.step()
+  assert.ok(s.downT[bro] > 0 && Math.abs(s.x[bro] - at) < 3, 'he lies where he landed')
+}
+{ // Spit Llama: a hit leaves the victim with nobody to aim at
+  const s = scene()
+  const spitter = s.spawn(unit('llama'), 100, 300), wet = s.spawn(unit('toast'), 280, 300)
+  s.cd[spitter] = 0
+  s.cd[wet] = 100
+  for (let t = 0; t < 180 && s.blindT[wet] <= 0; t++) s.step()
+  assert.ok(s.blindT[wet] > 0, 'llama spit blinds the toast')
+  s.step()
+  assert.equal(s.target[wet], -1, 'a blind toast has no target, grudge or not')
+}
+{ // Boba Menace: a pearl drags its victim toward the cup
+  const s = scene()
+  const cup = s.spawn(unit('boba'), 100, 300), napper = s.spawn(unit('bedrot'), 280, 300)
+  const full = UNITS[unit('bedrot')].hp
+  s.cd[cup] = 0
+  s.cd[napper] = 100
+  for (let t = 0; t < 120 && s.hp[napper] >= full; t++) s.step()
+  assert.ok(s.hp[napper] < full, 'a pearl lands')
+  for (let t = 0; t < 5; t++) s.step()
+  assert.ok(s.x[napper] < 279, 'and reels bed rot toward the cup')
+}
+{ // Depresso: the caffeine runs out and it sleeps where it stands
+  const s = scene()
+  const cup = s.spawn(unit('espresso'), 300, 300)
+  s.cd[s.spawn(unit('toast'), 700, 300)] = 100
+  s.moodT[cup] = 0.05
+  for (let t = 0; t < 10; t++) s.step()
+  assert.ok(s.moodT[cup] < 0, 'the crash arrives')
+  const at = s.x[cup]
+  for (let t = 0; t < 30; t++) s.step()
+  assert.ok(s.moodT[cup] < 0 && Math.abs(s.x[cup] - at) < 2, 'and it stays put while asleep')
+}
+
+// Fighter quirks, phase 3 (docs/fighter-quirks/phase-3-interactions.md). The mochi scene is further up.
+{ // Señor Chili: wildfire hops to whoever the burning fighter bumps into, but never onto a chili
+  const s = scene()
+  const lit = s.spawn(unit('toast'), 300, 300), next = s.spawn(unit('toast'), 305, 300)
+  s.burnT[lit] = 2.5
+  s.hot[lit] = 1
+  s.step()
+  assert.ok(s.burnT[next] > 0 && s.hot[next] === 1 && s.fearT[next] > 0, 'a burning toast lights the toast it bumps into, which panics')
+  assert.ok(s.burnT[next] < s.burnT[lit], 'each hop burns shorter')
+  const proof = scene()
+  const torch = proof.spawn(unit('toast'), 300, 300), pepper = proof.spawn(unit('chili'), 305, 300)
+  proof.burnT[torch] = 2.5
+  proof.hot[torch] = 1
+  proof.cd[torch] = proof.cd[pepper] = 100
+  for (let t = 0; t < 3; t++) proof.step()
+  assert.equal(proof.burnT[pepper], 0, 'a chili does not catch its own fire')
+}
+{ // Doomscroller: scrolling spreads by contact, then leaves a short immunity
+  const s = scene()
+  const first = s.spawn(unit('toast'), 300, 300), second = s.spawn(unit('toast'), 305, 300)
+  s.phoneT[first] = 1.6
+  s.step()
+  assert.ok(s.phoneT[second] > 0, 'a scrolling toast hands the habit to the toast it bumps into')
+  for (let t = 0; t < 150 && (s.phoneT[first] > 0 || s.phoneT[second] > 0); t++) s.step()
+  assert.ok(s.phoneT[first] < 0 && s.phoneT[second] < 0, 'both put the phone down and are immune for a moment')
+  s.phoneT[first] = 1.6
+  s.x[second] = s.x[first] + 5 // shove them back together
+  s.step()
+  assert.ok(s.phoneT[second] <= 0, 'an immune toast does not catch it again')
+}
+{ // Toddler: a hit becomes a leg-hug, and the toddler rides along wherever the leg goes
+  const def = UNITS[unit('toddler')], chance = def.latch
+  def.latch = 1
+  const s = scene()
+  const kid2 = s.spawn(unit('toddler'), 300, 300), leg = s.spawn(unit('toast'), 316, 300)
+  s.cd[kid2] = 0
+  s.cd[leg] = 100
+  for (let t = 0; t < 30 && s.latchT[kid2] <= 0; t++) s.step()
+  def.latch = chance
+  assert.ok(s.latchT[kid2] > 0, 'the toddler grabs a leg')
+  for (let t = 0; t < 20; t++) {
+    s.vx[leg] = 200 // drag the toast away
+    s.step()
+  }
+  assert.ok(s.latchT[kid2] > 0 && Math.hypot(s.x[kid2] - s.x[leg], s.y[kid2] - s.y[leg]) < 15 && s.slowT[leg] > 0, 'and is dragged along, slowing it')
+}
+{ // Main Character: a pose pulls nearby enemies off their own targets
+  const s = scene()
+  const star = s.spawn(unit('maincharacter'), 300, 300)
+  const bait = s.spawn(unit('goose'), 330, 300) // close enough to pose at
+  const fanA = s.spawn(unit('toast'), 390, 275), fanB = s.spawn(unit('toast'), 390, 325)
+  const rival = s.spawn(unit('intern'), 430, 300) // nearer to the toasts than she is
+  s.cd[star] = 100
+  s.cd[bait] = s.cd[fanA] = s.cd[fanB] = s.cd[rival] = 100
+  s.step()
+  assert.ok(s.target[fanA] === rival && s.target[fanB] === rival, 'the toasts start out after the intern')
+  s.cd[star] = 0
+  s.step()
+  assert.ok(s.spotT[fanA] > 0 && s.target[fanA] === star && s.target[fanB] === star, 'her pose turns both toasts toward her')
+}
+
+// Fighter quirks, phase 4 (docs/fighter-quirks/phase-4-bigger-builds.md). The cheese scene is further up.
+{ // Sandal Dad: throws his only sandal, then has to go and pick it up
+  const s = scene()
+  const pops = s.spawn(unit('dad'), 100, 300), napper = s.spawn(unit('bedrot'), 220, 300)
+  s.cd[napper] = 1e9 // a passive target, so dad lives to fetch
+  s.cd[pops] = 0
+  s.step()
+  assert.equal(s.away[pops], 1, 'the sandal is in the air')
+  let landed = false
+  for (let t = 0; t < 360 && s.away[pops]; t++) {
+    s.step()
+    if (s.away[pops] === 2) landed = true
+  }
+  assert.ok(landed && s.away[pops] === 0, 'it lands, and dad hops over and picks it up')
+}
+{ // Flapjack: losing a third of its health drops a pancake into a syrup spot
+  const s = scene()
+  const def = UNITS[unit('pancake')]
+  const jack = s.spawn(unit('pancake'), 300, 300)
+  assert.equal(s.layers[jack], 3, 'starts three pancakes tall')
+  s.hp[jack] = def.hp * 0.6
+  s.step()
+  assert.ok(s.layers[jack] === 2 && s.bT.subarray(0, s.bn).some((kind) => kind === 2), 'one pancake falls off as syrup')
+  const toast = s.spawn(unit('toast'), s.bX[s.bn - 1], s.bY[s.bn - 1])
+  s.step()
+  assert.ok(s.slowT[toast] > 0, 'the syrup gums up whoever walks through it')
+}
+{ // Spike: hurt and crowded, he curls up and rolls through them
+  const s = scene()
+  const def = UNITS[unit('hedgehog')]
+  const ball = s.spawn(unit('hedgehog'), 300, 300)
+  s.hp[ball] = def.hp * 0.3
+  const pins = [s.spawn(unit('toast'), 340, 300), s.spawn(unit('toast'), 300, 345), s.spawn(unit('toast'), 260, 300)]
+  for (const p of pins) s.cd[p] = 100
+  let rolled = false
+  for (let t = 0; t < 60; t++) {
+    s.step()
+    if (s.rollT[ball] > 0) rolled = true
+  }
+  assert.ok(rolled, 'spike curls up and rolls')
+  assert.ok(pins.some((p) => !s.alive[p] || s.hp[p] < UNITS[unit('toast')].hp), 'and bowls into a toast')
+}
+{ // Stinky: sprays a cloud that hurts enemies and shoves them out of it, and survives doing it
+  const s = scene()
+  const skunk = s.spawn(unit('skunk'), 300, 300), nose = s.spawn(unit('toast'), 330, 300)
+  s.cd[nose] = 100
+  for (let t = 0; t < 10 && !s.kLife.some((l) => l > 0); t++) s.step()
+  const k = s.kLife.findIndex((l) => l > 0)
+  assert.ok(k >= 0 && s.alive[skunk], 'the skunk sprays and is still standing')
+  const hp = s.hp[nose], far = Math.hypot(s.x[nose] - s.kX[k], s.y[nose] - s.kY[k])
+  for (let t = 0; t < 40; t++) s.step()
+  assert.ok(s.hp[nose] < hp && Math.hypot(s.x[nose] - s.kX[k], s.y[nose] - s.kY[k]) > far, 'the toast is hurt and pushed out of the cloud')
+}
+{ // Unpaid Intern: a kill gets him promoted, and he hurries the intern next to him along
+  const def = UNITS[unit('intern')], need = def.promote
+  def.promote = 1
+  const s = scene()
+  const boss = s.spawn(unit('intern'), 100, 300), staff = s.spawn(unit('intern'), 100, 340)
+  const victim = s.spawn(unit('goose'), 200, 300)
+  s.hp[victim] = 1
+  s.cd[boss] = 0
+  s.cd[staff] = 100
+  s.cd[victim] = 100
+  for (let t = 0; t < 60 && s.alive[victim]; t++) s.step()
+  assert.ok(!s.alive[victim] && s.grow[boss] >= 1, 'the first intern gets the kill')
+  s.step()
+  def.promote = need
+  assert.equal(s.bossTick[staff], s.tick - 1, 'the new manager hurries the other intern')
+}
+
+// Teams: same type on opposite sides fights; different types on one side don't; free-for-all is the default.
+{
+  const s = scene(), toast = unit('toast')
+  const a = s.spawn(toast, 400, 300, RED), b = s.spawn(toast, 440, 300, BLUE)
+  for (let t = 0; t < 30; t++) s.step()
+  assert.equal(s.target[a], b, 'a red toast fights a blue toast')
+  assert.equal(s.teamCounts[RED], 1, 'one red on the page')
+  assert.equal(s.teamCounts[BLUE], 1, 'one blue on the page')
+}
+{
+  const s = scene(), a = s.spawn(unit('toast'), 400, 300, RED), b = s.spawn(unit('goose'), 440, 300, RED)
+  for (let t = 0; t < 60; t++) s.step()
+  assert.equal(s.target[a], -1, 'teammates of different types leave each other alone')
+  assert.equal(s.hp[b], UNITS[unit('goose')].hp, 'and nobody gets hurt')
+}
+{
+  const s = scene(), a = s.spawn(unit('toast'), 400, 300), b = s.spawn(unit('toast'), 440, 300)
+  assert.equal(s.team[a], 2 + unit('toast'), 'spawn defaults to free-for-all')
+  for (let t = 0; t < 30; t++) s.step()
+  assert.equal(s.target[a], -1, 'two free-for-all toasts are still one side')
+  const r = s.spawn(unit('goose'), 420, 330, RED)
+  for (let t = 0; t < 30; t++) s.step()
+  assert.notEqual(s.target[r], -1, 'a red fighter fights free-for-all fighters')
+  assert.equal(s.team[b], 2 + unit('toast'), 'free-for-all keeps its type as its side')
+}
+// Projectiles carry the shooter's side.
+{
+  const s = scene()
+  s.spawn(unit('archerfish'), 100, 300, BLUE)
+  const mate = s.spawn(unit('toast'), 500, 300, BLUE)
+  for (let t = 0; t < 120; t++) s.step()
+  assert.equal(s.hp[mate], UNITS[unit('toast')].hp, 'no spitting at a teammate')
+  const foe = s.spawn(unit('toast'), 500, 360, RED)
+  for (let t = 0; t < 180; t++) s.step()
+  assert.ok(s.hp[foe] < UNITS[unit('toast')].hp || !s.alive[foe], 'spits at the red one')
+}
+// A hatched goose keeps its egg's side.
+{
+  const s = scene(), egg = s.spawn(unit('egg'), 400, 300, BLUE)
+  s.hp[egg] = 0.01
+  s.spawn(unit('toast'), 415, 300, RED)
+  for (let t = 0; t < 120 && s.type[egg] === unit('egg'); t++) s.step()
+  assert.equal(s.type[egg], unit('goose'), 'the egg hatched into its own slot')
+  assert.equal(s.team[egg], BLUE, 'and the goose is still blue')
+}
+// Frozen pops settle; clear empties the team tally.
+{
+  const s = scene(), a = s.spawn(unit('toast'), 400, 300, RED)
+  for (let t = 0; t < 30; t++) s.settle()
+  assert.equal(s.hitT[a], 0, 'a fighter placed during setup settles to normal size')
+  assert.equal(s.x[a], s.px[a], 'and settle() moves nobody')
+  s.clear()
+  assert.equal(s.teamCounts[RED], 0, 'clear empties the team tally')
+}
+
+console.log(`ok: ${alive} survivors after ${sim.tick} ticks; roster expansion and phase 1-4 quirk and team scenes passed`)

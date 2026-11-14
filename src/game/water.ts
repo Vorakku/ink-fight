@@ -147,11 +147,11 @@ function makePattern(m: CanvasRenderingContext2D, dpr: number) {
 }
 
 export function drawWater(c: CanvasRenderingContext2D, sim: Sim, dpr: number) {
-  if (ver !== sim.terrainVer || cw !== c.canvas.width || ch !== c.canvas.height) {
+  if (ver !== sim.waterVer || cw !== c.canvas.width || ch !== c.canvas.height) {
     cw = c.canvas.width
     ch = c.canvas.height
     build(sim, dpr)
-    ver = sim.terrainVer
+    ver = sim.waterVer
   }
   if (x1 < x0 || !still) return
   c.setTransform(1, 0, 0, 1, 0, 0)

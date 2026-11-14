@@ -151,7 +151,16 @@ second or two.
 |---|---|---|
 | Dizzy stars | `dizzyT` after a thrown fighter lands | Three 3px gold stars orbiting above the head |
 | Speed lines | `rush` (charging) | Three 9px grey (`#9a9aa8`) lines streaming behind |
-| Rainbow | `beam` (pegasus firing) | Six 1.7px bands arching from rump to target |
+| Rainbow charge | `beam === 1` | Paper-thin turn, clenched wiggle, frantic wings and six sparkles sucked into the rump over 1.1s |
+| Rainbow blast | `beam === 2` | Six straight parallel bands reaching 620px, a fading muzzle ring and a recoil skid; one hit at release |
+| Ant construction | `buildFor`, `inside`, `entryT`, `colonyT`, `colonyWorkers` | Workers enter the doorway over 0.25s and work underground; dirt hops from the entrance as the mound rises over 3s. A small count and progress stroke show the work; surviving builders emerge on completion or destruction |
+| Ant emergence | completed anthill's `atkT` | Three fading dirt specks at the entrance and the new ant's normal spawn pop, every 4s |
+| Fallen bodies | `cAlive`, `cType`, `cSize`, `cStage`, `cLook` | Frozen sprite snapshots on their side, X eyes, subdued colour and a soft floor shadow; independent of recycled live-fighter slots |
+| Ant hauling | `haulFor`, `haulSlot`, `cNeed`, `cHome`, `cEnter` | Two to eight ants grip positions around a body, lean and sweat while moving it together; it shrinks into the destination entrance over 0.6s and disappears |
+| Millipede/car | `millipedes.curlT`, `group`, `assemblyT`, `wheelPhase` | A segmented bug curls into a rolling wheel; four allies shimmy into a car with separately spinning millipede wheels and a wobbly chassis |
+| Mantis ritual | `mantises.scenes`, `member`, `role` | A real captive dangles between forelegs, allies wait around a small dust circle, and one bowing challenger steps forward at a time |
+| Spider attack | `spiders.webT`, `windT`, `jumpT`, `mount`, `clingT` | A traveling silk pellet leaves temporary leg threads; a crouch and jump arc end in a brief vulnerable clinging bite burst |
+| Spider nest/brood | `spiders.nestT`, `weaving`, `body`, `wrapT`, `cocoons`, `birthT` | A nest weaves into view, real bodies trail on silk and gain wrapping bands, and five visible cocoon bundles twitch before one spider emerges |
 | Burning | `burnT` | The `flame` sprite at half size, flickering on the head |
 | Charmed | `lureT` | The `heart` sprite at 0.3 size above the head |
 | Healing ring | `rLife` | Twelve small flames in a spreading circle |
@@ -163,7 +172,27 @@ second or two.
 | Jump | `leapT` | Sine arc with a shadow on the ground; capybara leans rump-first |
 | Landing/pose | `pulseT` | One fading elliptical dust or ring-light ring |
 | Cat brawl | `scrapT`, `scrapBy` | A short smoke cloud over both participants with paws and claws poking out |
-| Panic | `fearT` | Ninja turns away, trails speed lines and sheds a small blue sweat drop |
+| Panic | `fearT` | Ninja, or anyone a goose just pecked, turns away, trails speed lines and sheds a small blue sweat drop |
+| Honk | `scare` fighter attacking (`atkT`) | Three small grey sound arcs off the beak, fading with the lunge |
+| Lawn | `lawn` fighter walking | Ordinary bush stamps planted behind it; no separate effect |
+| Toasting | `grow` on a `grudge` fighter | The `char` silhouette faded in over the body, up to 55%; two grey steam puffs from three hits on |
+| Full belly | `grow` on a `swell` fighter | The sprite grows 12% a sip, a red ellipse fills the abdomen, and it wobbles |
+| Toppled | `downT` | Sprite rotated onto its back, rocking, lifted 8px to lie on the ground |
+| Spat on | `blindT` | A pale blue blob and drip over the face; the fighter sways as it stumbles |
+| Pearl string | projectile from a fighter with negative `knock` | A thin tea-coloured line from the straw to the pearl |
+| Wired / crashed | `moodT` on a `crash` fighter | Wired: 1.2px jitter and speed lines. Crashed: tipped face first with the sleep bubbles |
+| Scrolling | `phoneT` > 0 | A tiny dark phone with a pale screen held up to the face, head tilted down |
+| Leg-hug | `latchT` | The hugger sits at the victim's side, leaning in and swaying; the victim shows sticky footing |
+| Squish | `hitT` on a `squish` fighter | Sprite squashes wide and flat, then springs back with the attack lunge |
+| Spotlit | `spotT` | A small pale-yellow four-point sparkle over the head |
+| Second look | `alt` (dad `away`, hedgehog `rollT`, promoted intern) | Sprite swapped for the fighter's `alt` drawing |
+| Sandal on the floor | `away === 2` | Pink sandal lying at `itemX/itemY`; dad hops toward it |
+| Syrup spot | terrain kind 2 | Flat translucent brown blobs with a fallen pancake; walkers through it show sticky footing |
+| Cheese strand | `tetherT` | Yellow line, droopy when slack, thinner when taut |
+| Rolling | `rollT` | Spiky ball sprite spinning, with speed lines |
+| Stink cloud | `kLife` | Four wobbling translucent green puffs and three wavy lines, drawn over fighters |
+| Overworked | `bossTick` | The blue sweat drop on interns a manager is hurrying |
+| Team bandanna | `team` is red or blue | A 3px band in `TEAM_COLORS` just under the sprite's top edge, knotted at the back with two fluttering tails; fades with a hider; `band` on the fighter overrides the height |
 
 To add an effect:
 
@@ -180,7 +209,9 @@ To add an effect:
   `spawn()`, because slots are reused.
 - **One optional field on `UnitDef` per quirk** (`grab`, `charge`, `flies`, `carry`, `eats`), with a
   comment saying what it does. The sim checks the field, never the fighter's key.
-- **Every unit type is its own team.** "Enemy" means any other type.
+- **Teams**: red, blue, or free-for-all (stored as `2 + type`, so every type is its own side). Friend or
+  foe compares `team`, never `type`, and anything a fighter makes (projectiles, stink clouds, throws,
+  hatchlings, summons) inherits its side.
 - **Reuse what exists**: `hit()` for a landed attack, `damage()` for raw damage, `toss()` to send someone
   through the air, `land()` for the landing, `burnT` and `slowT` for after-effects.
 - **No allocation in `step()`.** Area scans copy the grid loop used in `explode()`.
@@ -192,6 +223,26 @@ To add an effect:
 - **Shared quirks**: `burst` uses the projectile pool, `orbit` keeps throwing while circling, `shock`
   briefly stuns, `spin` and `pulse` use enemy-only area hits, `regen` recovers while resting,
   `dash`/`timid` supply the ninja's lunge and panic, and `leap` selects a slam or opening brawl.
+  From [fighter quirks phase 1](fighter-quirks/phase-1-quick-wins.md): `scare` panics the victim,
+  `launch` throws it with `toss()`, `bully` targets the toughest fighter in sight, `lawn` plants
+  bushes, `brine` leaves puddles after an explosion, and `pops` fires kernels while burning.
+  From [phase 2](fighter-quirks/phase-2-timers-and-states.md): `grudge` locks onto the first attacker,
+  `swell` pops after enough bites, `topple` knocks it flat, `blind` takes away the victim's target,
+  `crash` alternates caffeine and sleep, and a negative `knock` pulls.
+  From [phase 3](fighter-quirks/phase-3-interactions.md): `wildfire` burns spread on contact,
+  `distract` hands out phones that spread on contact, `latch` hugs a leg, `squish` springs knockback
+  back at the attacker, and `spotlight` makes nearby enemies target the poser.
+  From [phase 4](fighter-quirks/phase-4-bigger-builds.md): `fetch` must retrieve its projectile,
+  `alt` is a second sprite, `stack` loses layers as syrup, `tether` holds and drains, `roll` bowls
+  when cornered, `stink` sprays clouds, and `promote` turns a killer into a manager.
+- **Contact effects go in `touch(i, j)`**, called from the separation loop for every overlapping pair.
+  Anything that spreads must weaken each hop so it dies out.
+- **Cancel moves with `stopMoves(i)`** (brawl, jump, dash, spin, leg-hug) whenever a fighter is
+  stunned, thrown, held, charmed or killed. Add new move timers to it.
+- **Projectiles know who fired them**: `owner(p)` returns the shooter's slot, or -1 if it is gone.
+  `hit()` takes `from` (who is touching it: thorns, eating) and `by` (who gets the blame, also at range).
+- **Terrain can change mid-fight.** Water redraws from `waterVer`, bushes re-sort from `terrainVer`.
+  Bump `waterVer` only when water changes.
 - **One check per behaviour** in `checks/sim.check.ts`: build a tiny scene, step it, assert. Where luck
   is involved, set the chance to 1 for the check and put it back.
 - Mark a known limit as `// shortcut: <the limit>, <when to fix it>`.
