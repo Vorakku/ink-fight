@@ -372,3 +372,34 @@ bringing only what it needs. Do not restore the whole old simulation or roster.
 
 Do not run tests, builds, linters, type checks, dev servers or browser verification
 without the owner's permission. Finish each change, then ask whether to test it.
+
+Meng Chuan (`mengchuan.ts`, Hero). His first skill, Autumn Breeze (`MENG_BREEZE`), fires when an enemy is
+50–220 px away: he dashes straight through it at 950 px/s, stops 22 px behind its far side and turns to face its
+back. Every grounded enemy within 20 px of the blade's path is cut once for 42 damage and frozen mid-recoil (held
+in a leaning-back hit pose, stunned, with a turning ring of blue-green wind and circling ginkgo and bamboo leaves
+instead of stun stars) until the painting has played, then moves normally. Stun, fear, freeze, a lure, a grab or a
+throw ends the dash. Seven-second cooldown.
+While he dashes, only a thin painted cut follows him. When he stops it swells into the main stroke, and five
+slashes in blue, green and gold sweep across it one after another as curved arcs, then two long white hairline
+cuts. Each slash is an ink-brush stroke: colour ghosts fringing it like misregistered print, an ink underlayer, a
+colour wash brightening to white at the head, broken dry-brush hairs, a razor-white edge and flicked ink, with
+shards spinning off. `drawMengSlashes` takes `curve`; 0 gives a straight version, kept for later.
+Behind the slashes a painting of the autumn wind spreads along the cut straight onto the battlefield, with no scroll,
+silk or frame: blue far peaks and green near hills rising out of nothing at both ends, with ink texture strokes,
+drifting mist, a pale gold sun, wild geese, three flowing wind ribbons with cloud curls, a swaying ginkgo branch,
+the inscription 秋风 and a red seal. Ginkgo and bamboo leaves blow out of it and gusts race past. Everything
+dissolves after 2.4 seconds.
+He is a master of the parry (`MENG_PARRY`): each enemy hit (melee or projectile) has a 75% chance to be turned aside
+for no damage while he is on his feet and free (not stunned, frozen, scared, grabbed, thrown or mid-dash).
+Damage over time is never parried. He turns to the attacker and holds a guard pose, the jian raised across his face,
+for 0.25 seconds. The parry spark is a curved ink-cyan-white blade flash, a four-point glint, a pale ring, gold
+sparks sprayed back at the attacker and a ginkgo leaf knocked loose; only one spark shows per guard.
+Five Autumn Shadows (五影秋斩, `MENG_CLONE`): each parry against a grounded enemy within 260 px has a 30% chance
+(10-second cooldown) to split him into five figures that surround it evenly in a circle, cyan-glowing clones and
+him among them, he on his own side. He cannot be hit until it ends. The enemy is held, glancing from figure to figure under a brush
+question mark, then strikes a clone, which shatters into ink, shards and a leaf. He and the other three dash straight
+through it to the opposite side of the circle, crossing like a star, and cut for 64 damage; he lands at its back. It freezes in its hit pose under the straight slashes (`drawMengSlashes`, `curve` 0)
+while the clones dissolve into ink, and the name 五影秋斩 is drawn above it. The characters slide in and float,
+filled with the slash colours flowing through them, with colour fringes and a brush stroke sweeping under them.
+The enemy's death or escape ends it early.
+His palette is yellow, blue and green; that is the deliberate difference from Yan Jin's black-and-white yin and yang.

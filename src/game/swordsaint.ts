@@ -49,6 +49,15 @@ export const CATCH_COUNT = 5 // fish, boot, tin can, seaweed, fish bone
 // With no enemy around: meditate to heal `heal` HP/s when hurt; at full health fly to water and fish.
 export const SWORD_SAINT_REST = { heal: 40 } as const
 
+// Sword Ward, a skill only while riding: his floating swords circle him and turn aside every attack for
+// `duration` seconds, while `strikers` of them dart at the enemy, return and strike again. He only uses it
+// with at least `strikers` swords floating. Rolled after Sword Storm, with `chance`.
+export const SWORD_SAINT_WARD = { chance: 0.25, duration: 5, strikers: 2 } as const
+
+// At `threshold` of his HP his swords become lightning bamboo sticks for the rest of the fight, multiplying
+// damage, knockback, sword speed and size, summon speed, sword count, attack and skill speed by `power`.
+export const SWORD_SAINT_BAMBOO = { threshold: 0.5, power: 2 } as const
+
 // Guard position of the k-th floating sword in sprite-local units (feet at 0,0, facing right, y up negative).
 // Golden-angle spacing scatters them; slow drift keeps them wandering close by.
 export function swordSlot(k: number, time: number, seed: number) {
@@ -75,19 +84,56 @@ function drawVapor(c: C, time: number, strength: number, length = 6) {
   c.restore()
 }
 
+// Sword Ward: the k-th of `count` swords spinning in a ring around his waist, pointing the way it travels.
+function orbitSlot(k: number, count: number, time: number) {
+  const angle = k / count * Math.PI * 2 + time * 0.08, rx = 30, ry = 12
+  return { x: Math.cos(angle) * rx, y: -22 + Math.sin(angle) * ry,
+    tilt: Math.atan2(Math.cos(angle) * ry, -Math.sin(angle) * rx) + Math.PI / 2, front: Math.sin(angle) > 0 }
+}
+
 // The floating swords, either the ones behind his sprite or the ones in front.
 // `jab` 0..1 swings them level and thrusts them forward to stab alongside his slash.
-export function drawSwordFan(c: C, count: number, time: number, seed: number, front: boolean, jab = 0) {
+// `orbit` spins them in the Sword Ward ring; `scale` and `bamboo` come from his bamboo form.
+export function drawSwordFan(c: C, count: number, time: number, seed: number, front: boolean, jab = 0, orbit = false, scale = 1, bamboo = false) {
   for (let k = 0; k < count; k++) {
-    const { x, y, tilt, front: inFront } = swordSlot(k, time, seed)
+    const { x, y, tilt, front: inFront } = orbit ? orbitSlot(k, count, time) : swordSlot(k, time, seed)
     if (inFront !== front) continue
     c.save()
     c.translate(x + jab * 12, y)
     c.rotate((-Math.PI / 2 + tilt) * (1 - jab))
     drawVapor(c, time + k * 17, 0.6, 4)
-    drawJian(c, 16)
+    drawBlade(c, 16 * scale, bamboo, time + k * 17)
     c.restore()
   }
+}
+
+// A crackling lightning bamboo stick pointing along +x, its butt end where a jian's pommel would be.
+export function drawBambooStick(c: C, length = 22, time = 0) {
+  c.save()
+  c.lineCap = 'round'
+  c.strokeStyle = '#fff27a'
+  c.globalAlpha = 0.35
+  c.lineWidth = 6
+  line(c, -10, 0, length, 0)
+  c.globalAlpha = 1
+  c.strokeStyle = INK
+  c.lineWidth = 1.1
+  box(c, -10, -1.8, length + 10, 3.6, 1.2, '#7cc35e')
+  c.strokeStyle = '#3f7a35'
+  for (let x = -4; x < length - 2; x += 7) line(c, x, -1.8, x, 1.8) // nodes
+  c.lineWidth = 0.9
+  for (let arc = 0; arc < 2; arc++) {
+    const points: number[] = []
+    for (let i = 0; i <= 6; i++) points.push(-10 + (length + 12) * i / 6, Math.sin(time * 0.9 + i * 2.7 + arc * 3) * 3.5)
+    c.strokeStyle = arc ? '#9fe8ff' : '#fff27a'
+    line(c, ...points)
+  }
+  c.restore()
+}
+
+function drawBlade(c: C, length: number, bamboo: boolean, time = 0) {
+  if (bamboo) drawBambooStick(c, length, time)
+  else drawJian(c, length)
 }
 
 // A small jian pointing along +x, centred on its guard.
@@ -106,18 +152,18 @@ export function drawJian(c: C, length = 22) {
 }
 
 // A launched sword in a stream of green vapour; `speed` 0..1 builds the trail once it starts flying.
-export function drawFlyingSword(c: C, x: number, y: number, angle: number, time: number, speed = 1, length = 16) {
+export function drawFlyingSword(c: C, x: number, y: number, angle: number, time: number, speed = 1, length = 16, bamboo = false) {
   c.save()
   c.translate(x, y)
   c.rotate(angle)
   c.lineCap = 'round'
   drawVapor(c, time, 0.5 + speed * 0.5, 8)
-  c.strokeStyle = JADE
+  c.strokeStyle = bamboo ? '#fff27a' : JADE
   c.globalAlpha = 0.4 * speed
   c.lineWidth = 3
   line(c, -16, 0, 4, 0)
   c.globalAlpha = 1
-  drawJian(c, length)
+  drawBlade(c, length, bamboo, time)
   c.restore()
 }
 
@@ -247,9 +293,10 @@ export function drawFishingRod(c: C, lift: number, groundY: number | null, time:
 }
 
 // The giant sword, with spirit swords converging into it while it forms (`form` 0..1).
-export function drawGiantSword(c: C, x: number, y: number, angle: number, form: number, time: number) {
+export function drawGiantSword(c: C, x: number, y: number, angle: number, form: number, time: number, scale = 1, bamboo = false) {
   c.save()
   c.translate(x, y)
+  c.scale(scale, scale)
   if (form < 1) {
     for (let k = 0; k < 8; k++) {
       const a = k * Math.PI / 4 + time * 0.05, r = (1 - form) * 60 + 6
@@ -258,7 +305,7 @@ export function drawGiantSword(c: C, x: number, y: number, angle: number, form: 
       c.translate(Math.cos(a) * r, Math.sin(a) * r * 0.7)
       c.rotate(a + Math.PI)
       drawVapor(c, time + k * 11, 0.7, 4)
-      drawJian(c, 14)
+      drawBlade(c, 14, bamboo, time + k * 11)
       c.restore()
     }
   }
@@ -272,7 +319,7 @@ export function drawGiantSword(c: C, x: number, y: number, angle: number, form: 
   c.globalAlpha = form
   c.scale(3, 3)
   drawVapor(c, time, form, 6)
-  drawJian(c, 22)
+  drawBlade(c, 22, bamboo, time)
   c.restore()
 }
 
@@ -355,7 +402,7 @@ export function drawSaintSlash(c: C, x: number, y: number, angle: number, progre
 
 type SaintPose = 'ride' | 'stand' | 'slash' | 'meditate' | 'fish'
 
-function drawSwordSaint(c: C, pose: SaintPose, step?: number) {
+function drawSwordSaint(c: C, pose: SaintPose, step?: number, bamboo = false) {
   const seated = pose === 'meditate' || pose === 'fish', riding = pose === 'ride' || seated
   // Spirit glow and the sword he rides, hilt trailing behind.
   if (riding) {
@@ -365,7 +412,7 @@ function drawSwordSaint(c: C, pose: SaintPose, step?: number) {
     c.ellipse(26, 42, 19, 3.5, 0, 0, Math.PI * 2)
     c.fill()
     c.translate(12, 41.5)
-    drawJian(c, 32)
+    drawBlade(c, 32, bamboo)
     c.strokeStyle = '#c94a3a'
     c.lineWidth = 1.2
     line(c, -10, 0, -13, 4, -11, 7) // red tassel
@@ -419,7 +466,7 @@ function drawSwordSaint(c: C, pose: SaintPose, step?: number) {
     c.save()
     c.translate(handX, handY)
     c.rotate(pose === 'slash' ? 0.1 : -1.1)
-    drawJian(c, pose === 'slash' ? 24 : 20)
+    drawBlade(c, pose === 'slash' ? 24 : 20, bamboo)
     c.restore()
   }
   c.save()
@@ -460,7 +507,7 @@ function drawSwordSaint(c: C, pose: SaintPose, step?: number) {
   c.restore()
 }
 
-export function buildSwordSaintSprite(color?: string, pose: SaintPose = 'ride', step?: number) {
+export function buildSwordSaintSprite(color?: string, pose: SaintPose = 'ride', step?: number, bamboo = false) {
   // Riding has no ground shadow: the battle draws his hover shadow separately. Team colour is the hat band.
-  return buildSprite((c) => drawSwordSaint(c, pose, step), color, [18, 4.5, 14], pose === 'stand' || pose === 'slash')
+  return buildSprite((c) => drawSwordSaint(c, pose, step, bamboo), color, [18, 4.5, 14], pose === 'stand' || pose === 'slash')
 }

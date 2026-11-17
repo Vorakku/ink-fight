@@ -6,43 +6,93 @@ const STRAP = '#7a5a3a', ROPE = '#cfa86a', STEEL = '#e3e8ef', GREAT = '#aeb8c4',
 
 export const YAN_JIN = {
   name: 'Yan Jin',
-  blurb: 'Two swords: a long blade for three lightning-fast slices, then a colossal greatsword slam that knocks everyone up',
-  radius: 11, hp: 560, speed: 150, damage: 12, range: 14, detection: 460,
+  blurb: 'Two swords: three lightning-fast slices, then a twin-bladed greatsword slam. At half HP he turns into a lifestealing red demon',
+  radius: 11, hp: 760, speed: 150, damage: 16, range: 14, detection: 460,
   cooldown: 0.1, knockback: 40, spacing: 44, size: 1.25, color: COAT,
 } as const
 
 // `slices` long-sword cuts `interval` seconds apart, each stepping in with `lunge` px/s; then he raises the
 // greatsword for `windup`, slams, and pauses for `recover`.
-export const YAN_JIN_COMBO = { slices: 3, interval: 0.1, lunge: 110, windup: 0.28, recover: 0.75 } as const
+export const YAN_JIN_COMBO = { slices: 3, interval: 0.1, lunge: 110, windup: 0.28, recover: 0.6 } as const
 // The slam lands `reach` px in front of him and hits grounded enemies within `radius` for `damage`,
 // throwing them `height` px up for `air` seconds; they land with a `stun`. The crack lasts `crater` seconds.
-export const YAN_JIN_SLAM = { reach: 16, radius: 72, damage: 40, knockback: 60, air: 0.75, height: 46, stun: 0.4, crater: 3 } as const
+export const YAN_JIN_SLAM = { reach: 16, radius: 72, damage: 52, knockback: 60, air: 0.75, height: 46, stun: 0.4, crater: 3 } as const
+// Tempest Slash: a target between `min` and `range` px away makes him cut a white crescent that flies at `speed` px/s
+// for `life` seconds, passing through enemies: each within `radius` px of it takes `damage` and is knocked back at
+// `knockback` px/s. Every `cooldown` seconds.
+export const YAN_JIN_TEMPEST = { min: 90, range: 320, speed: 520, life: 0.9, radius: 22, damage: 34, knockback: 320, cooldown: 6 } as const
 // An enemy within `range` px (but out of reach) makes him burst forward at `speed` px/s, every `cooldown` seconds.
 export const YAN_JIN_DASH = { range: 150, speed: 520, cooldown: 2.2 } as const
 
-// The colossal greatsword along +x from its guard: wrapped grip, broad chisel-tipped blade with a dark spine.
+// The twin-bladed greatsword along +x from its guard: ribbed black grip, spiked silver pommel, ornate silver guard,
+// and two broad parallel blades with a slit between, each with an engraved dark fuller and an angled tip.
 function drawGreatsword(c: C, length: number, width: number, blade = GREAT, edge = GREAT_EDGE) {
-  const w = width / 2
+  const w = width / 2, gap = Math.max(0.8, width * 0.12), bw = w - gap / 2
   c.save()
   c.strokeStyle = INK
   c.lineWidth = 1.2
-  box(c, -11, -1.7, 11, 3.4, 1, COAT_DARK)
-  c.strokeStyle = ROPE
-  c.lineWidth = 0.8
-  for (let x = -9.5; x < -1; x += 2.2) line(c, x, -1.5, x + 1.3, 1.5)
+  box(c, -11, -1.6, 11, 3.2, 1, '#1c1b22')
+  c.strokeStyle = '#5a5764'
+  c.lineWidth = 0.7
+  for (let x = -10; x < -1; x += 1.6) line(c, x, -1.3, x, 1.3) // ribbed wrap
   c.strokeStyle = INK
-  c.lineWidth = 1.2
-  ellipse(c, -12, 0, 2, 2, GOLD)
-  poly(c, blade, 1, -w, length - 6, -w, length, -w + 3.5, length - 1, w, 1, w)
-  c.fillStyle = '#7f8996'
-  c.fillRect(1.6, -w + 0.6, length - 8, 1.6) // dark spine
-  c.strokeStyle = edge
   c.lineWidth = 1.1
-  line(c, 3, w - 1.1, length - 2, w - 1.1)
+  poly(c, STEEL, -11, -2, -14.5, 0, -11, 2)
+  // Upper blade a touch shorter, its point on the top edge; the lower one's point on the bottom edge.
+  for (const [top, len, upper] of [[-w, length - 3, true], [gap / 2, length, false]] as const) {
+    const bottom = top + bw
+    c.strokeStyle = INK
+    c.lineWidth = 1.2
+    if (upper) poly(c, blade, 1, top, len, top, len - 5, bottom, 1, bottom)
+    else poly(c, blade, 1, top, len - 5, top, len, bottom, 1, bottom)
+    c.fillStyle = 'rgba(28,26,40,.55)'
+    c.fillRect(3, top + bw * 0.32, len - 11, bw * 0.36) // engraved fuller
+    c.strokeStyle = edge
+    c.lineWidth = 0.7
+    line(c, 3, upper ? top + 0.7 : bottom - 0.7, len - 4, upper ? top + 0.7 : bottom - 0.7)
+  }
   c.strokeStyle = INK
-  c.lineWidth = 1.2
-  poly(c, '#4a4652', -1.5, -w - 2.5, 2, -w - 1.5, 2, w + 1.5, -1.5, w + 2.5)
-  ellipse(c, 0.3, 0, 1.3, 1.3, GOLD)
+  c.lineWidth = 1.1
+  poly(c, '#c9ced8', -1.5, -w - 3, 1.5, -w - 1.5, 3.5, -w + 1, 2, 0, 3.5, w - 1, 1.5, w + 1.5, -1.5, w + 3, 0, 0)
+  c.strokeStyle = '#7f8796'
+  c.lineWidth = 0.6
+  c.beginPath()
+  c.arc(0.8, 0, Math.max(1, w * 0.45), -1.2, 1.2) // the guard's swirl
+  c.stroke()
+  c.restore()
+}
+
+// The wooden sword case slung diagonally across his back, hilts up behind his shoulder: planks with a white
+// bandage and leather straps with gold studs, holding whichever swords are not in his hands.
+function drawCase(c: C, great: boolean, long: boolean) {
+  c.save()
+  c.translate(21, 28)
+  c.rotate(-2.2)
+  c.strokeStyle = INK
+  c.lineWidth = 1.1
+  box(c, -4, -5.5, 26, 11, 1.5, '#6e5d4b')
+  poly(c, '#5d4e3f', 16, -6.5, 22.5, -6.5, 22.5, 6.5, 16, 6.5)
+  c.strokeStyle = '#4f4235'
+  c.lineWidth = 0.6
+  line(c, -2, -2, 15, -2)
+  line(c, -2, 1.8, 15, 1.8)
+  c.strokeStyle = INK
+  c.lineWidth = 0.8
+  box(c, 2, -5.9, 3, 11.8, 0.5, '#f1eee6')
+  for (const x of [8, 12.5]) {
+    box(c, x, -6.2, 1.7, 12.4, 0.4, STRAP)
+    ellipse(c, x + 0.85, -3, 0.8, 0.8, GOLD)
+    ellipse(c, x + 0.85, 3, 0.8, 0.8, GOLD)
+  }
+  c.lineWidth = 1
+  if (great) {
+    box(c, 22.5, -4.4, 7.5, 3, 0.8, '#1c1b22')
+    poly(c, STEEL, 30, -4.6, 32.5, -2.9, 30, -1.2)
+  }
+  if (long) {
+    box(c, 22.5, 1.4, 6.5, 2.4, 0.8, COAT_DARK)
+    ellipse(c, 29.6, 2.6, 1.2, 1.2, '#9a96a8')
+  }
   c.restore()
 }
 
@@ -64,25 +114,38 @@ function drawLongsword(c: C, length: number) {
 }
 
 // 'charge' and 'cleave' are the raise and slam arms with no swords: during Catastrophe the long sword stays in the
-// ground and the colossal greatsword is drawn live.
-type YanPose = 'ready' | 'slice' | 'raise' | 'slam' | 'meditate' | 'pierce' | 'charge' | 'cleave'
+// ground and the colossal greatsword is drawn live. 'lift' is the long sword raised point-down before 'pierce'.
+// 'idle' is out of combat, both swords in the case; 'seppuku' is both swords driven through him as he turns demon.
+type YanPose = 'ready' | 'idle' | 'slice' | 'raise' | 'slam' | 'meditate' | 'lift' | 'pierce' | 'charge' | 'cleave' | 'seppuku'
 
 // The slicing hand in sprite pixels; the battle swings the long sword from here (feet at 24,44).
 const SLICE_HAND = [36, 22] as const
 
 function drawYanJin(c: C, pose: YanPose, step?: number) {
   const twoHanded = pose === 'raise' || pose === 'slam', seated = pose === 'meditate'
-  // Greatsword slung across his back, or lifted overhead, blade behind his head.
-  c.save()
-  if (pose === 'raise') { c.translate(33, 8.5); c.rotate(2.95) } else { c.translate(21, 28); c.rotate(-2.2) }
-  if (pose !== 'slam' && pose !== 'charge' && pose !== 'cleave' && !seated) drawGreatsword(c, 32, 9) // otherwise drawn live
-  c.restore()
-  // With both hands on the greatsword, the long sword rides at his hip.
-  if (twoHanded) {
+  // Lifted overhead, the greatsword's blade is behind his head.
+  if (pose === 'raise') {
     c.save()
-    c.translate(18, 31)
-    c.rotate(2.55)
-    drawLongsword(c, 17)
+    c.translate(33, 8.5)
+    c.rotate(2.95)
+    drawGreatsword(c, 32, 9)
+    c.restore()
+  }
+  // The case holds the greatsword unless it is in his hands (or flying, or in him), and the long sword when he is
+  // out of combat or swinging the greatsword two-handed.
+  const greatOut = twoHanded || pose === 'charge' || pose === 'cleave' || seated || pose === 'seppuku'
+  drawCase(c, !greatOut, pose === 'idle' || twoHanded)
+  // Seppuku: both blades run through him and out his back, so they go behind his body.
+  if (pose === 'seppuku') {
+    c.save()
+    c.translate(37, 29)
+    c.rotate(Math.PI + 0.3)
+    drawGreatsword(c, 30, 8)
+    c.restore()
+    c.save()
+    c.translate(37, 26)
+    c.rotate(Math.PI - 0.2)
+    drawLongsword(c, 27)
     c.restore()
   }
 
@@ -167,7 +230,21 @@ function drawYanJin(c: C, pose: YanPose, step?: number) {
     ellipse(c, x, y, 2.2, 2.2, SKIN)
     c.restore()
   }
-  if (pose === 'ready') {
+  if (pose === 'idle') {
+    poly(c, COAT, 28, 20, 33, 20.5, 34.5, 29, 30.5, 30, 28.5, 26)
+    hand(32.5, 30.5)
+  } else if (pose === 'seppuku') {
+    // Both fists at his belly on the two hilts; red where the blades went in.
+    poly(c, COAT, 28, 20, 34, 21, 37.5, 27, 33, 30, 29, 26)
+    c.save()
+    c.strokeStyle = '#d81a26'
+    c.lineWidth = 1.4
+    line(c, 31.5, 25, 30.5, 28.5)
+    line(c, 32, 28, 30, 31.5)
+    c.restore()
+    hand(36.5, 26)
+    hand(36.5, 29.5)
+  } else if (pose === 'ready') {
     poly(c, COAT, 28, 20, 35, 20.5, 39.5, 27, 36.5, 30.5, 30, 27)
     c.save()
     c.translate(38, 29)
@@ -263,6 +340,16 @@ function drawYanJin(c: C, pose: YanPose, step?: number) {
     poly(c, COAT, 28, 21, 33, 19.5, 39.5, 10, 35.5, 8, 31, 14)
     hand(37, 7.7)
     hand(40.8, 7)
+  } else if (pose === 'lift') {
+    // Both fists high in a reverse grip, the long sword hanging point-down in front of him, about to stab.
+    c.save()
+    c.translate(38, 6)
+    c.rotate(Math.PI / 2)
+    drawLongsword(c, 18)
+    c.restore()
+    poly(c, COAT, 28, 21, 33, 19.5, 40, 7, 36, 5, 31, 14)
+    hand(38, 3.5)
+    hand(38, 7)
   }
 }
 
@@ -562,12 +649,12 @@ export function drawYanMeditation(c: C, time: number, tick: number, lift: number
   c.restore()
 }
 
-// Gravity Seal: when an enemy comes within `trigger` px he stabs the long sword into the ground and a circle of
-// characters `radius` px wide (drawn and tested `squash` as deep) spreads under him. Enemies standing in it, or
-// walking in, float up `height` px, helpless, until he pulls the sword out after `duration` seconds; then they
-// slam down at `drop` px/s, taking `damage` and a `stun`. Every `cooldown` seconds.
+// Gravity Seal: when an enemy comes within `trigger` px he raises the long sword and, `plant` seconds later, stabs
+// it into the ground; a circle of characters `radius` px wide (drawn and tested `squash` as deep) spreads under him.
+// Enemies standing in it, or walking in, float up `height` px, helpless, until he pulls the sword out `duration`
+// seconds after he started; then they slam down at `drop` px/s, taking `damage` and a `stun`. Every `cooldown` seconds.
 export const YAN_JIN_SEAL = {
-  trigger: 80, radius: 120, squash: 0.6, duration: 3, height: 40, drop: 600, damage: 30, stun: 1.6, cooldown: 9,
+  trigger: 80, radius: 120, squash: 0.6, plant: 0.4, duration: 3.4, height: 40, drop: 600, damage: 40, stun: 1.6, cooldown: 7,
 } as const
 
 // Whether (dx, dy) from the seal's centre lies inside it.
@@ -576,13 +663,39 @@ export function inYanSeal(dx: number, dy: number) {
   return (dx / S.radius) ** 2 + (dy / (S.radius * S.squash)) ** 2 <= 1
 }
 
+// The stab, in sprite-local units (feet at 0,0): speed lines down the sword's path and ink thrown up where the
+// point bites the ground; `progress` 0..1.
+export function drawYanStab(c: C, progress: number) {
+  const p = Math.min(1, Math.max(0, progress))
+  c.save()
+  c.translate(11.5, 0)
+  c.lineCap = 'round'
+  c.globalAlpha = 1 - p
+  c.strokeStyle = '#ffffff'
+  c.lineWidth = 2.2
+  line(c, 0, -40 + p * 30, 0, -4)
+  c.strokeStyle = INK
+  c.lineWidth = 1
+  line(c, -3.5, -34 + p * 26, -3.5, -6)
+  line(c, 3.5, -30 + p * 22, 3.5, -6)
+  c.fillStyle = INK
+  for (let k = 0; k < 6; k++) {
+    const a = -Math.PI / 2 + (k - 2.5) * 0.45, d = 4 + p * 14
+    c.beginPath()
+    c.arc(Math.cos(a) * d, Math.sin(a) * d * 0.9 + p * p * 10, 1.4 - (k % 2) * 0.5, 0, Math.PI * 2)
+    c.fill()
+  }
+  c.restore()
+}
+
 const SEAL_WORDS = '重力引浮天地陰陽' // gravity, force, pull, float, heaven, earth, yin, yang
 
 // The white seal on the ground at (x, y), `time` seconds after the sword went in: inked rings that spread open,
 // characters circling between them, and ink motes drifting up through it. It closes as the sword comes out.
 export function drawYanSeal(c: C, x: number, y: number, time: number, tick: number) {
   const S = YAN_JIN_SEAL
-  const open = ease(time / 0.35), fade = Math.min(1, Math.max(0, (S.duration - time) / 0.25))
+  if (time < S.plant) return // the sword is still on its way down
+  const open = ease((time - S.plant) / 0.35), fade = Math.min(1, Math.max(0, (S.duration - time) / 0.25))
   const r = S.radius * open
   c.save()
   c.translate(x, y)
@@ -651,11 +764,12 @@ export function drawYanSeal(c: C, x: number, y: number, time: number, tick: numb
 // `charge`, then cleaves down over `slash`, landing `land` px short of the seal's centre: `slashDamage` to everyone
 // floating. A black hole opens there `holeHeight` px up, spinning the floaters in for `hole` seconds, then explodes:
 // `damage` to enemies within `radius` (and every floater), throwing them and him away at `throw` / `selfThrow` px/s.
+// The cleave's ink splash and the move's name over his head last `title` seconds.
 export const YAN_JIN_CATASTROPHE = {
-  trigger: 100, crowd: 2, cooldown: 22, opening: 6,
-  pierce: 0.4, leap: 0.6, charge: 1.1, slash: 0.3, hole: 2,
-  back: 50, height: 60, land: 40, slashDamage: 35,
-  holeHeight: 50, orbit: 46, radius: 140, damage: 70, throw: 650, selfThrow: 520, burst: 0.8,
+  trigger: 100, crowd: 1, cooldown: 16, opening: 6, title: 2,
+  pierce: 0.55, leap: 0.6, charge: 1.1, slash: 0.3, hole: 2,
+  back: 50, height: 60, land: 40, slashDamage: 50,
+  holeHeight: 50, orbit: 46, radius: 140, damage: 90, throw: 650, selfThrow: 520, burst: 0.8,
 } as const
 const K = YAN_JIN_CATASTROPHE
 
@@ -683,7 +797,9 @@ export function drawYanColossus(c: C, phase: 'charge' | 'slash' | 'hole', progre
     c.save()
     c.translate(8, -26)
     c.globalAlpha = fadeOut * (phase === 'hole' ? 0.8 : 1)
-    brushArc(c, 60, -2.4, 1.0, 20, swing * 1.25, INK)
+    brushArc(c, 64, -2.4, 1.0, 42, swing * 1.2, '#ffffff', 'rgba(34,31,51,.5)') // a white rim around the black
+    brushArc(c, 60, -2.4, 1.0, 30, swing * 1.25, INK)
+    brushArc(c, 44, -2.3, 0.9, 7, swing * 1.3, INK) // a second, thinner stroke trailing inside
     c.restore()
   }
   c.translate(gx - 24, gy - 44)
@@ -697,6 +813,93 @@ export function drawYanColossus(c: C, phase: 'charge' | 'slash' | 'hole', progre
     c.beginPath()
     c.arc(4 + k / 7 * (length - 6) - rise * 0.3, -width / 2 - rise, 1.5 + (k % 3), 0, Math.PI * 2)
     c.fill()
+  }
+  c.restore()
+}
+
+// The cleave landing at (x, y), `time` seconds ago: a white flash, a towering stroke of black ink split by a white
+// cut, an ink blot cracking the ground and drops flung outward. Gone after about a second.
+export function drawYanCleave(c: C, x: number, y: number, facing: number, time: number) {
+  if (time > 1.1) return
+  c.save()
+  c.translate(x, y)
+  c.lineCap = c.lineJoin = 'round'
+  if (time < 0.2) {
+    c.globalAlpha = (1 - time / 0.2) * 0.9
+    c.fillStyle = '#fffdf6'
+    c.beginPath()
+    c.ellipse(0, -40, 40 + time * 400, 30 + time * 260, 0, 0, Math.PI * 2)
+    c.fill()
+  }
+  const fade = Math.min(1, (1.1 - time) / 0.6), spread = ease(time / 0.15)
+  c.globalAlpha = fade * 0.85
+  c.fillStyle = c.strokeStyle = INK
+  c.beginPath()
+  c.ellipse(0, 0, 90 * spread, 20 * spread, 0, 0, Math.PI * 2)
+  c.fill()
+  for (let k = 0; k < 10; k++) {
+    const a = k * 0.63 + 0.3, l = (60 + (k % 3) * 30) * spread, bend = (k % 2 ? 1 : -1) * 0.25
+    c.lineWidth = 2.5 - (k % 3) * 0.6
+    line(c, Math.cos(a) * 30 * spread, Math.sin(a) * 7 * spread, Math.cos(a + bend) * l * 0.65, Math.sin(a + bend) * l * 0.16,
+      Math.cos(a) * l, Math.sin(a) * l * 0.25)
+  }
+  // The towering stroke, brushed top-down in an instant (t 0 at the top, 1 at the ground), then cut open.
+  const H = 190, sx = facing * 40, reveal = ease(time / 0.07), n = 20
+  const at = (t: number) => [sx * (1 - t), -H * (1 - t)]
+  const w = (t: number) => 26 * Math.sin(Math.PI * Math.min(1, t * 0.95 + 0.04)) ** 0.6 * (0.4 + t * 0.8)
+  c.globalAlpha = fade
+  c.beginPath()
+  for (let i = 0; i <= n; i++) {
+    const t = reveal * i / n, [px, py] = at(t)
+    if (i) c.lineTo(px - w(t) / 2, py)
+    else c.moveTo(px - w(t) / 2, py)
+  }
+  for (let i = n; i >= 0; i--) {
+    const t = reveal * i / n, [px, py] = at(t)
+    c.lineTo(px + w(t) / 2, py)
+  }
+  c.fill()
+  if (time > 0.08) {
+    const [ax, ay] = at(0.06), [bx, by] = at(0.06 + 0.9 * ease((time - 0.08) / 0.08))
+    c.strokeStyle = '#fffdf6'
+    c.lineWidth = 2.4
+    line(c, ax, ay, bx, by)
+  }
+  for (let k = 0; k < 18; k++) {
+    const a = -Math.PI * (0.1 + 0.8 * ((k * 0.618) % 1)), v = 120 + (k % 5) * 45
+    const px = Math.cos(a) * v * time, py = Math.sin(a) * v * time + 260 * time * time - 10
+    if (py > 0) continue // landed
+    c.beginPath()
+    c.arc(px, py, 3 - (k % 3) * 0.8, 0, Math.PI * 2)
+    c.fill()
+  }
+  c.restore()
+}
+
+export const YAN_JIN_TITLE = '天地浩劫' // "Heaven and Earth Catastrophe"
+
+// The move's name over his head at (x, y), `time` seconds after the cleave: big brush characters rising up into
+// place one after another, outlined in white, fading out together at the end.
+export function drawYanTitle(c: C, x: number, y: number, time: number) {
+  const out = Math.min(1, Math.max(0, (K.title - time) / 0.4)), size = 30, n = YAN_JIN_TITLE.length
+  c.save()
+  c.font = `bold ${size}px KaiTi, STKaiti, "Kaiti SC", "Noto Serif CJK SC", serif`
+  c.textAlign = 'center'
+  c.textBaseline = 'middle'
+  c.lineJoin = 'round'
+  for (let i = 0; i < n; i++) {
+    const p = ease((time - i * 0.09) / 0.25), scale = 1.35 - 0.35 * p
+    if (p <= 0) continue
+    c.save()
+    c.translate(x + (i - (n - 1) / 2) * size * 1.05, y + (1 - p) * 26)
+    c.scale(scale, scale)
+    c.globalAlpha = p * out
+    c.strokeStyle = '#fffdf6'
+    c.lineWidth = 6
+    c.strokeText(YAN_JIN_TITLE[i], 0, 0)
+    c.fillStyle = INK
+    c.fillText(YAN_JIN_TITLE[i], 0, 0)
+    c.restore()
   }
   c.restore()
 }
@@ -867,5 +1070,411 @@ export function drawYanHeld(c: C, x: number, y: number, tick: number) {
   c.arc(x, y, 7 + Math.sin(tick * 0.2) * 1, 0, Math.PI * 2)
   c.fill()
   c.stroke()
+  c.restore()
+}
+
+// Demon form. At `health` of his HP he drives both swords into himself (`stab` seconds), flickers between himself
+// and the demon over `fade` seconds, then roars for `roar` seconds: enemies within `roarRadius` take `roarDamage`
+// and are blasted away through the air at `roarKnockback` px/s (about 150 px). He is immune to everything until the
+// roar ends. As a demon he uses `stats`, and `lifesteal` of all the damage he deals heals him.
+export const YAN_DEMON = {
+  health: 0.5, stab: 0.5, fade: 1.6, roar: 0.9, roarRadius: 240, roarDamage: 20, roarKnockback: 720, lifesteal: 0.5,
+  stats: { speed: 190, damage: 24, cooldown: 0.4, range: 18, knockback: 70 },
+} as const
+// Phantom Strikes: a target within `range` px makes him dash at `dash` px/s to its far side and knock it flying a
+// random way at `knockback` px/s for `air` seconds (about 175 px, low and fast); once it lands he dashes to it and
+// does it again, `hits` times in all, `damage` each. A dash gives up after `chase` seconds; he gives up waiting after
+// `wait`. Every `cooldown` seconds.
+export const YAN_DEMON_BLINK = { range: 200, hits: 5, behind: 18, damage: 18, knockback: 700, air: 0.25, dash: 1300, chase: 0.5, wait: 1.2, trail: 0.3, cooldown: 8 } as const
+// Life Gather: the demon's Tempest Slash, a red crescent that also drains `drain` of the damage it does (on top of
+// his lifesteal); the victim's blood flies back into him over `blood` seconds.
+export const YAN_DEMON_GATHER = { ...YAN_JIN_TEMPEST, damage: 40, drain: 0.5, blood: 0.6, cooldown: 5 } as const
+// Ram Deflect: a target between `min` and `range` px away makes him rush at it at `speed` px/s, sword forward,
+// turning back every enemy projectile that comes within `deflect` px. Reaching it, he knocks up every enemy within
+// `radius` of it for `damage`. He gives up after `chase` seconds. Every `cooldown` seconds.
+export const YAN_DEMON_RAM = { min: 150, range: 380, speed: 560, deflect: 42, chase: 1.2, radius: 60, damage: 30, knockback: 120, cooldown: 9 } as const
+// Ruin: a target within `trigger` px makes him raise the sword for `raise` seconds and slam it down: `slamDamage`
+// and a `stun` within `slamRadius`. He holds it in the ground for `hold`, then rips it up through a band `length` px
+// long and `width` px wide toward the target, `liftDamage` and a knock-up; `lift` seconds to recover. Stun-immune throughout.
+export const YAN_DEMON_RUIN = {
+  trigger: 140, raise: 0.55, hold: 0.6, lift: 0.8, slamRadius: 110, slamDamage: 35, stun: 0.8,
+  length: 260, width: 130, liftDamage: 60, knockback: 160, cooldown: 11,
+} as const
+
+const D_SKIN = '#f1e4de', D_HAIR = '#d3202b', D_HAIR_DARK = '#8c0f19', D_VEIN = '#e01823', D_ARMOR = '#c8141f'
+const D_ARMOR_HI = '#ff6a70', D_CLOTH = '#2a1418', D_TRIM = '#7a1a22', D_RED = '#d81a26'
+
+// 'ram' has no sprite of its own: it uses the slash arm with the sword held level in front.
+type DemonPose = 'ready' | 'slash' | 'raise' | 'plant' | 'lift' | 'roar' | 'ram'
+
+// The demon sword along +x from the hand: grey ribbed grip and ring pommel, a jagged black blade with a
+// glowing red crack down it and red light bleeding off its edges.
+function drawDemonSword(c: C, length: number, tick: number) {
+  const L = length
+  c.save()
+  c.strokeStyle = INK
+  c.lineWidth = 1
+  box(c, -6, -1.2, 7, 2.4, 0.8, '#4a484f')
+  c.beginPath()
+  c.arc(-7.2, 0, 1.4, 0, Math.PI * 2)
+  c.stroke()
+  c.shadowColor = '#ff2a2a'
+  c.shadowBlur = 6
+  poly(c, '#2b1114', 2, -2.8, L * 0.22, -2.3, L * 0.28, -3.7, L * 0.42, -2.1, L * 0.52, -3.3, L * 0.68, -1.8,
+    L * 0.78, -2.7, L, 0, L * 0.76, 1.7, L * 0.6, 2.7, L * 0.42, 1.8, L * 0.26, 2.9, 2, 2.6)
+  c.shadowBlur = 0
+  c.strokeStyle = '#ff3b3b'
+  c.lineWidth = 0.8
+  line(c, 3, 0.2, L * 0.4, -0.4, L * 0.7, 0.3, L - 3, 0)
+  c.strokeStyle = INK
+  c.lineWidth = 1
+  poly(c, '#6a6870', 0.5, -4.2, 3, -3, 3, 3, 0.5, 4.2, -0.5, 0)
+  // Red vapor peeling off the blade.
+  c.fillStyle = D_RED
+  for (let k = 0; k < 5; k++) {
+    const drift = (tick * 0.5 + k * 9) % 14
+    c.globalAlpha = 0.5 * (1 - drift / 14)
+    c.beginPath()
+    c.arc(5 + k / 4 * (L - 8), -3 - drift, 1 + (k % 2) * 0.6, 0, Math.PI * 2)
+    c.fill()
+  }
+  c.restore()
+}
+
+// Demon form: long red hair, bare pale chest split by glowing red veins, jagged red crystal pauldrons, three red
+// marks on his brow. The sword is drawn live (drawYanDemonBlade); the hands are where it is held.
+function drawYanDemon(c: C, pose: DemonPose, step?: number) {
+  const hand = (x: number, y: number) => {
+    c.save()
+    c.lineWidth = 1.2
+    ellipse(c, x, y, 2.2, 2.2, D_SKIN)
+    c.restore()
+  }
+  // Hair streaming down his back.
+  poly(c, D_HAIR, 18, 5, 12.5, 11, 10, 22, 9, 32, 12.5, 36, 15, 29, 18, 20)
+  c.save()
+  c.strokeStyle = D_HAIR_DARK
+  c.lineWidth = 0.7
+  line(c, 14, 14, 11.5, 30)
+  line(c, 16.5, 16, 14, 31)
+  c.restore()
+  poly(c, D_ARMOR, 14, 21, 10, 12, 15.5, 16, 15, 9, 19.5, 16, 21, 21)
+  if (pose === 'roar') {
+    poly(c, D_SKIN, 17, 21, 10, 18, 5, 13, 7.5, 11, 12, 15, 19, 19)
+    hand(6, 12)
+  } else if (pose === 'ready' || pose === 'slash') poly(c, D_SKIN, 17, 20, 12.5, 24, 11.5, 31, 16, 31, 19, 26)
+
+  const trouser = (x1: number, x2: number, foot: number) => {
+    poly(c, D_CLOTH, x1, 33, x2, 33, x2 - 0.5, 40, x1 + 0.5, 40)
+    box(c, x1, 38, x2 - x1, 3, 1, D_TRIM)
+    box(c, foot, 40, 8, 4, 1.5, '#1a0c0f')
+  }
+  leg(c, step, 20, 34, () => trouser(17, 23, 15))
+  leg(c, opposite(step), 28, 34, () => trouser(25, 31, 26))
+  // Ragged dark skirt with a red belt, and the bare chest above it.
+  poly(c, D_CLOTH, 14.5, 29, 33.5, 29, 36, 37.5, 31, 35.5, 27, 38, 22, 35.5, 17, 38, 12, 37)
+  poly(c, D_SKIN, 16, 19, 32, 19, 33.5, 29, 14.5, 29)
+  box(c, 14.5, 28.5, 19, 2.6, 1, D_TRIM)
+  // Veins glowing red, spreading up from the wound over his heart.
+  c.save()
+  c.shadowColor = '#ff2030'
+  c.shadowBlur = 3
+  c.strokeStyle = D_VEIN
+  c.lineWidth = 0.9
+  line(c, 24.5, 28, 24, 24.5, 21.5, 21.5, 19, 20.5)
+  line(c, 24, 25, 27.5, 22, 31, 20.5)
+  line(c, 24.5, 27, 20.5, 25.5, 17, 23)
+  line(c, 24.5, 26.5, 29, 25.5, 32.5, 23)
+  line(c, 21.5, 21.5, 22.5, 19.5)
+  c.lineWidth = 1.7
+  line(c, 24.5, 28, 24.5, 25.5)
+  c.restore()
+
+  c.save()
+  if (pose === 'roar') { c.translate(25, 18); c.rotate(-0.28); c.translate(-25, -18) } // head thrown back
+  c.lineWidth = 1.6
+  ellipse(c, 25, 13, 7.5, 7.5, D_SKIN)
+  c.lineWidth = 1.3
+  poly(c, D_HAIR, 15.5, 16, 15, 8, 18.5, 3.5, 24, 1.8, 29.5, 2.6, 33.5, 6, 34, 11, 31.5, 7.5, 27.5, 6.2, 25, 7.5,
+    21.5, 9, 20, 17, 18, 24, 15.5, 22)
+  c.strokeStyle = D_HAIR_DARK
+  c.lineWidth = 0.7
+  line(c, 19, 6, 25, 3.8)
+  line(c, 17, 10, 17.5, 19)
+  c.fillStyle = D_VEIN
+  for (let k = 0; k < 3; k++) {
+    c.beginPath()
+    c.arc(28.8, 7.9 + k * 1.4, 0.6 - k * 0.12, 0, Math.PI * 2)
+    c.fill()
+  }
+  c.strokeStyle = INK
+  c.lineWidth = 1.2
+  line(c, 26.6, 10.2, 31.2, 11.2) // brow drawn down in a glare
+  ellipse(c, 29.2, 12.9, 1.8, 1.1, '#ffd9d9')
+  c.fillStyle = '#e01020'
+  c.beginPath()
+  c.arc(29.8, 12.9, 0.9, 0, Math.PI * 2)
+  c.fill()
+  if (pose === 'roar') ellipse(c, 30, 17.4, 1.7, 1.5, '#3a0a10')
+  else line(c, 28.6, 17.6, 31, 17.2)
+  c.restore()
+
+  // Front arm, then the jagged crystal pauldron over its shoulder.
+  if (pose === 'ready') poly(c, D_SKIN, 30, 22, 35, 22, 39.5, 27.5, 36.5, 30.5, 31, 27)
+  else if (pose === 'slash' || pose === 'ram') poly(c, D_SKIN, 30, 21, 34, 19.5, 38.5, 20.5, 36.5, 25, 31, 26)
+  else if (pose === 'plant') poly(c, D_SKIN, 30, 22, 35, 22, 38.5, 26, 35.5, 29.5, 31, 27)
+  else if (pose === 'raise') poly(c, D_SKIN, 29, 21, 33, 19.5, 37, 6, 33.5, 5, 30.5, 14)
+  else if (pose === 'lift') poly(c, D_SKIN, 29, 21, 33, 19.5, 40, 9, 36.5, 7, 31, 15)
+  else poly(c, D_SKIN, 30, 22, 35, 21, 42, 25, 41, 28.5, 33, 27)
+  poly(c, D_ARMOR, 27.5, 22, 29, 15.5, 32, 18, 34, 10, 35.5, 17.5, 39.5, 13.5, 37.5, 21.5, 33, 24.5)
+  c.save()
+  c.strokeStyle = D_ARMOR_HI
+  c.lineWidth = 0.7
+  line(c, 30, 20, 34, 12.5)
+  line(c, 34, 20, 38.5, 15)
+  c.restore()
+  const [hx, hy] = DEMON_GRIPS[pose]
+  hand(hx, hy)
+  if (pose === 'plant' || pose === 'raise' || pose === 'lift') hand(hx, hy + 3.5)
+}
+
+// Where the demon holds the sword in each pose (sprite pixels) and the blade's angle.
+const DEMON_GRIPS: Record<DemonPose, readonly [number, number, number]> = {
+  ready: [38, 29, 1.1], slash: [36, 22, 0], raise: [35, 4.5, -Math.PI / 2], plant: [37, 26, Math.PI / 2 - 0.05],
+  lift: [38.5, 7.5, -1.0], roar: [42, 27, 0.7], ram: [36, 22, -0.15],
+}
+
+export function buildYanDemonSprite(color?: string, pose: DemonPose = 'ready', step?: number) {
+  return buildSprite((c) => drawYanDemon(c, pose, step), color, [15, 28.5, 18])
+}
+
+// The demon sword in sprite-local units (feet at 0,0, facing right) for `pose`. Slashing (`progress` 0..1) it
+// sweeps down through a red brush stroke; raising it, red light gathers at the point.
+export function drawYanDemonBlade(c: C, pose: DemonPose, progress: number, tick: number) {
+  const length = pose === 'plant' ? 21 : 24, [hx, hy, angle] = DEMON_GRIPS[pose]
+  c.save()
+  c.translate(hx - 24, hy - 44)
+  c.lineCap = c.lineJoin = 'round'
+  if (pose === 'slash') {
+    const from = -1.9, to = 1.0, swing = 1 - (1 - Math.min(1, progress * 2.2)) ** 3
+    c.save()
+    c.globalAlpha = Math.max(0, 1 - Math.max(0, progress - 0.35) * 1.6)
+    brushArc(c, length - 1, from, to, 9, swing, D_RED, 'rgba(60,0,8,.6)')
+    c.restore()
+    c.rotate(from + (to - from) * swing)
+  } else c.rotate(angle)
+  drawDemonSword(c, length, tick)
+  c.strokeStyle = INK
+  c.lineWidth = 1.2
+  ellipse(c, 0, 0, 2.2, 2.2, D_SKIN)
+  if (pose === 'raise') {
+    const r = 3 + 9 * ease(progress), glow = c.createRadialGradient(length, 0, 0, length, 0, r * 2)
+    glow.addColorStop(0, 'rgba(255,90,90,.95)')
+    glow.addColorStop(0.4, 'rgba(216,26,38,.6)')
+    glow.addColorStop(1, 'rgba(216,26,38,0)')
+    c.fillStyle = glow
+    c.beginPath()
+    c.arc(length, 0, r * 2, 0, Math.PI * 2)
+    c.fill()
+  }
+  c.restore()
+}
+
+// Ram Deflect's barrier, in sprite-local units (feet at 0,0, facing right): a spinning red crescent in front of
+// him that projectiles glance off, with streaks raking back past him.
+export function drawYanRamShield(c: C, tick: number) {
+  c.save()
+  c.translate(14, -20)
+  c.lineCap = 'round'
+  for (let k = 0; k < 3; k++) {
+    c.save()
+    c.scale(0.55, 1)
+    c.rotate(tick * 0.25 + k * 2.09)
+    c.globalAlpha = 0.75
+    brushArc(c, 24, -1.1, 1.1, 6 - k, 1, k ? '#ff6a6a' : D_RED, 'rgba(60,0,8,.5)')
+    c.restore()
+  }
+  c.strokeStyle = 'rgba(216,26,38,.6)'
+  c.lineWidth = 1.6
+  for (const [y, length] of [[-14, 22], [-4, 30], [6, 20], [14, 26]]) {
+    const shift = (tick * 3 + y * 7) % 10
+    line(c, -16 - shift, y, -16 - shift - length, y)
+  }
+  c.restore()
+}
+
+// Red vapor boiling up around him, in sprite-local units; drawn behind the sprite. `strength` 0..1+.
+export function drawYanDemonAura(c: C, tick: number, strength: number) {
+  if (strength <= 0) return
+  c.save()
+  const glow = c.createRadialGradient(0, -20, 4, 0, -20, 34)
+  glow.addColorStop(0, `rgba(220,20,35,${Math.min(0.6, 0.32 * strength)})`)
+  glow.addColorStop(1, 'rgba(220,20,35,0)')
+  c.fillStyle = glow
+  c.beginPath()
+  c.arc(0, -20, 34, 0, Math.PI * 2)
+  c.fill()
+  for (let k = 0; k < 14; k++) {
+    const rise = (tick * 0.7 + k * 13) % 40, x = Math.sin(k * 2.3) * 14 + Math.sin((tick + k * 20) * 0.05) * 3
+    c.globalAlpha = Math.min(1, strength * 0.55 * (1 - rise / 40))
+    c.fillStyle = k % 3 ? '#e3202d' : '#ff7a6a'
+    c.beginPath()
+    c.ellipse(x, -4 - rise, 2.5 + (k % 3), 4 + (k % 2) * 2, 0, 0, Math.PI * 2)
+    c.fill()
+  }
+  c.restore()
+}
+
+// The roar at his feet (x, y); `progress` 0..1: red shock rings racing out across the ground and vapor bursting up.
+export function drawYanRoar(c: C, x: number, y: number, progress: number) {
+  const p = progress, D = YAN_DEMON
+  c.save()
+  c.translate(x, y)
+  c.strokeStyle = D_RED
+  for (let k = 0; k < 3; k++) {
+    const q = p * 1.6 - k * 0.25
+    if (q <= 0 || q >= 1) continue
+    const ring = 20 + q * D.roarRadius * 1.3
+    c.globalAlpha = (1 - q) * 0.85
+    c.lineWidth = 7 * (1 - q) + 1
+    c.beginPath()
+    c.ellipse(0, 0, ring, ring * 0.45, 0, 0, Math.PI * 2)
+    c.stroke()
+  }
+  for (let k = 0; k < 16; k++) {
+    const a = k * 0.39, d = 18 + p * 70, rise = p * 70 * (0.6 + (k % 3) * 0.2)
+    c.globalAlpha = (1 - p) * 0.6
+    c.fillStyle = k % 2 ? '#e3202d' : '#ff6a6a'
+    c.beginPath()
+    c.ellipse(Math.cos(a) * d, Math.sin(a) * d * 0.45 - rise * 0.5, 6 + (k % 4) * 2, 8 + (k % 3) * 3, 0, 0, Math.PI * 2)
+    c.fill()
+  }
+  c.restore()
+}
+
+// Ruin's cracks racing from the planted sword at (x, y) along (nx, ny), glowing red; `progress` 0..1 over the hold.
+export function drawYanRuinCracks(c: C, x: number, y: number, nx: number, ny: number, progress: number) {
+  const R = YAN_DEMON_RUIN, reach = 16 + (R.length - 16) * ease(progress)
+  c.save()
+  c.lineCap = c.lineJoin = 'round'
+  for (let k = 0; k < 5; k++) {
+    const spread = (k - 2) * R.width * 0.2, points: number[] = []
+    for (let i = 0; i <= 6; i++) {
+      const along = 16 + (reach - 16) * i / 6, off = spread * i / 6 + (((i * 7 + k * 3) % 5) - 2) * 3
+      points.push(x + nx * along - ny * off, y + ny * along + nx * off)
+    }
+    c.strokeStyle = 'rgba(216,26,38,.45)'
+    c.lineWidth = 5
+    line(c, ...points)
+    c.strokeStyle = INK
+    c.lineWidth = 2
+    line(c, ...points)
+    c.strokeStyle = '#ff4a4a'
+    c.lineWidth = 0.8
+    line(c, ...points)
+  }
+  c.restore()
+}
+
+// Ruin's eruption along the band from (x, y) toward (nx, ny): upright black crystal spikes edged in red bursting
+// from the ground one after another, then crumbling; `progress` 0..1 over the recovery. Far spikes draw first.
+export function drawYanRuinEruption(c: C, x: number, y: number, nx: number, ny: number, progress: number) {
+  const R = YAN_DEMON_RUIN, p = progress, n = 14
+  const spikes = Array.from({ length: n }, (_, k) => {
+    const along = 24 + k / (n - 1) * (R.length - 24), off = (((k * 37) % 9) - 4) / 4 * R.width * 0.4
+    return { k, x: x + nx * along - ny * off, y: y + ny * along + nx * off }
+  }).sort((a, b) => a.y - b.y)
+  c.save()
+  c.lineJoin = 'round'
+  c.strokeStyle = '#ff3040'
+  c.lineWidth = 1.3
+  for (const { k, x: sx, y: sy } of spikes) {
+    const delay = k / (n - 1) * 0.25, q = Math.min(1, Math.max(0, (p - delay) / 0.18))
+    const fade = 1 - Math.max(0, (p - delay - 0.3) / 0.4)
+    if (q <= 0 || fade <= 0) continue
+    const h = (40 + (k % 4) * 18) * ease(q), w = 7 + (k % 3) * 3
+    c.globalAlpha = fade
+    poly(c, '#2b1114', sx - w, sy, sx - w * 0.3, sy - h * 0.6, sx, sy - h, sx + w * 0.4, sy - h * 0.5, sx + w, sy)
+  }
+  c.restore()
+}
+
+// A red streak where he blinked from (x1, y1) to (x2, y2) (feet); `progress` 0..1.
+export function drawYanTrail(c: C, x1: number, y1: number, x2: number, y2: number, progress: number) {
+  c.save()
+  c.lineCap = 'round'
+  c.globalAlpha = 1 - progress
+  c.strokeStyle = 'rgba(216,26,38,.5)'
+  c.lineWidth = 12 * (1 - progress) + 2
+  line(c, x1, y1 - 16, x2, y2 - 16)
+  c.strokeStyle = '#2b1114'
+  c.lineWidth = 2
+  line(c, x1, y1 - 16, x2, y2 - 16)
+  c.restore()
+}
+
+// A flying crescent slash at (x, y) (ground point under it), heading `angle`, `age` seconds old: white ink edged in
+// black for Tempest Slash, or blood red and glowing for Life Gather, with streaks trailing behind it.
+export function drawYanCrescent(c: C, x: number, y: number, angle: number, demon: boolean, age: number, tick: number) {
+  const grow = ease(age / 0.12), R = 24 * grow, fade = Math.min(1, (YAN_JIN_TEMPEST.life - age) / 0.15)
+  if (R <= 1 || fade <= 0) return
+  c.save()
+  c.translate(x, y - 18)
+  c.rotate(angle)
+  c.globalAlpha = fade
+  c.lineCap = c.lineJoin = 'round'
+  // Streaks trailing behind.
+  c.strokeStyle = demon ? 'rgba(216,26,38,.55)' : 'rgba(34,31,51,.35)'
+  c.lineWidth = 1.4
+  for (const off of [-14, -5, 5, 14]) {
+    const length = 18 + ((tick + off * 3) % 8)
+    line(c, -4, off, -4 - length, off * 0.9)
+  }
+  // The crescent: an outer arc ahead, an inner arc carving it thin at the tips.
+  c.beginPath()
+  c.arc(-R * 0.55, 0, R, -1.15, 1.15)
+  c.arc(-R * 0.85, 0, R * 0.95, 1.05, -1.05, true)
+  c.closePath()
+  if (demon) {
+    c.shadowColor = '#ff2a2a'
+    c.shadowBlur = 10
+  }
+  c.fillStyle = demon ? D_RED : '#ffffff'
+  c.fill()
+  c.shadowBlur = 0
+  c.strokeStyle = demon ? '#3a0a10' : INK
+  c.lineWidth = 1.3
+  c.stroke()
+  if (demon) {
+    // Red vapor boiling off it.
+    c.fillStyle = '#ff6a6a'
+    for (let k = 0; k < 5; k++) {
+      const drift = (tick * 0.6 + k * 7) % 12
+      c.globalAlpha = fade * 0.5 * (1 - drift / 12)
+      c.beginPath()
+      c.arc(-6 - drift * 1.5, (k - 2) * 7, 1.5 + (k % 2), 0, Math.PI * 2)
+      c.fill()
+    }
+  }
+  c.restore()
+}
+
+// A drop of blood drained by Life Gather, `progress` 0..1 of the way from (x1, y1) to (x2, y2) along a curve bent
+// by `bend` px, shrinking as it is absorbed.
+export function drawYanBlood(c: C, x1: number, y1: number, x2: number, y2: number, bend: number, progress: number) {
+  const t = ease(progress), dx = x2 - x1, dy = y2 - y1, d = Math.hypot(dx, dy) || 1
+  const arc = Math.sin(progress * Math.PI) * bend
+  const x = x1 + dx * t - dy / d * arc, y = y1 + dy * t + dx / d * arc
+  const r = 2.4 * (1 - progress * 0.5)
+  c.save()
+  c.globalAlpha = Math.min(1, (1 - progress) * 3)
+  c.strokeStyle = 'rgba(200,16,30,.5)'
+  c.lineWidth = r
+  c.lineCap = 'round'
+  line(c, x - dx / d * 6, y - dy / d * 6, x, y)
+  c.fillStyle = '#c8101e'
+  c.beginPath()
+  c.arc(x, y, r, 0, Math.PI * 2)
+  c.fill()
   c.restore()
 }
