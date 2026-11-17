@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "check": "node checks/sim.check.ts",
+    "check": "node checks/battle.check.ts",
     "preview": "vite preview"
   },
   "dependencies": {

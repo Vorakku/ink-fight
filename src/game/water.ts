@@ -1,4 +1,4 @@
-import { BCELL, DT, type Sim } from './sim.ts'
+import { BCELL, type WaterTerrain } from './terrain.ts'
 
 // Water is drawn from the sim's puddle mask, so what you see is exactly where fighters slow down:
 // blur the mask, trace smooth outlines through it (marching squares), then slide soft patches over it.
@@ -8,6 +8,7 @@ const DEEP_ISO = 0.82 // with the wider blur this sits ~25px in from the shore; 
 const SINK = 11, SINK_DEEP = 6 // px a wader goes under in the shallows, and how much more in the deep
 const DRIFT = [[16, 6, 1], [-11, 10, 0.7]] as const // two patch layers sliding different ways, so the patches change shape
 
+let source: WaterTerrain | undefined
 let ver = -1, cw = 0, ch = 0, cols = 0, rows = 0
 let shore = new Float32Array(0), deep = new Float32Array(0)
 let x0 = 0, y0 = 0, x1 = -1, y1 = -1 // device-px box around the water; empty when x1 < x0
@@ -79,7 +80,7 @@ function contour(f: Float32Array, iso: number, s: number, g0: number[], g1: numb
   return [fill, edge] as const
 }
 
-function build(sim: Sim, dpr: number) {
+function build(sim: WaterTerrain, dpr: number) {
   const mask = sim.bmask
   cols = sim.bcols
   rows = mask.length / cols
@@ -146,15 +147,16 @@ function makePattern(m: CanvasRenderingContext2D, dpr: number) {
   patternDpr = dpr
 }
 
-export function drawWater(c: CanvasRenderingContext2D, sim: Sim, dpr: number) {
-  if (ver !== sim.waterVer || cw !== c.canvas.width || ch !== c.canvas.height) {
+export function drawWater(c: CanvasRenderingContext2D, sim: WaterTerrain, tick: number, dpr: number, offsetX = 0, offsetY = 0) {
+  if (source !== sim || ver !== sim.waterVer || cw !== c.canvas.width || ch !== c.canvas.height) {
     cw = c.canvas.width
     ch = c.canvas.height
     build(sim, dpr)
     ver = sim.waterVer
+    source = sim
   }
   if (x1 < x0 || !still) return
-  c.setTransform(1, 0, 0, 1, 0, 0)
+  c.setTransform(1, 0, 0, 1, offsetX * dpr, offsetY * dpr)
   c.drawImage(still, 0, 0)
 
   const w = x1 - x0, h = y1 - y0
@@ -164,7 +166,7 @@ export function drawWater(c: CanvasRenderingContext2D, sim: Sim, dpr: number) {
   if (patternDpr !== dpr) makePattern(m, dpr)
   m.setTransform(1, 0, 0, 1, 0, 0)
   m.globalCompositeOperation = 'copy' // the first layer replaces last frame's
-  const t = sim.tick * DT
+  const t = tick / 60
   for (const [vx, vy, a] of DRIFT) {
     const ox = t * vx * dpr - x0, oy = t * vy * dpr - y0 // patterns are pinned to the origin, so move the origin
     m.setTransform(1, 0, 0, 1, ox, oy)

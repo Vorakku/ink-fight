@@ -1,268 +1,319 @@
-# InkFight style guide: drawing, animation and effects
+# Inkfight V2
 
-This is the house style for anything that appears on the page: fighters, their moving parts, and the
-effects around them. Follow it when you add or change a fighter so new work looks and moves like the
-rest. Read [neal-reference.md](neal-reference.md) first; it explains the idea we are borrowing (the
-jokes come from what happens on screen) and lists what we must not copy.
+Keep the notebook background, handwritten title and simple controls. Ink is `#221f33`,
+paper is `#fbf7ec`, Red is `#e5484d`, and Blue is `#3e7bfa`.
 
-## Current state (read before starting)
+The roster contains Honk, Thor, Tiny Arms (T-Rex), Encore (phoenix), Scorch (dragon),
+Coral Chorus (siren) and No Thanks (ninja), plus Water, Tower and Tree terrain.
+Original 48×48 artwork is baked at 3× resolution.
+`src/game/art.ts` holds the shared drawing helpers. `units.ts` registers the seven fighters,
+team sprites, Thor's empty-handed pose and the lightning X-ray overlay.
 
-Five fighters from the earlier session were recorded as **never run**: Tiny Arms (`rex`), Pointy
-(`unicorn`), Sparklebutt (`pegasus`), Special Delivery (`griffin`) and Noodle (`snake`). No type-check,
-no `npm run check`, no look in a browser. Their sprites were drawn from coordinates alone.
+- Honk (`goose.ts`, from main): 45 HP, 150 px/s, 5 damage, 0.3-second pecks and a
+  35% chance to cause 0.8 seconds of panic. Keep the little honk arcs and sweat drop.
+  `GOOSE_SWOOP` adds a 25% roll every 0.3 seconds while approaching a grounded enemy
+  beyond peck reach and within 120 px. A successful roll starts a 0.35-second flight
+  and a two-second skill cooldown. Follow the target, stop at peck reach and deal
+  one normal peck on contact, including its scare chance. Reset the peck cooldown
+  on landing. Show raised wings, tucked feet, an arc and a separate ground shadow;
+  aim at the target's face height. Reuse the existing charge state and airborne
+  separation rules. Stun, fear or a dead target interrupts the swoop.
+- Thor (`thor.ts`): 600 HP, 95 px/s, 26 hammer damage, a 1.1-second normal attack
+  cooldown, 240 hammer knockback and 1.4× size. The hammer travels at 420 px/s,
+  40 px past its target, then homes, hitting each enemy once per pass. It no longer
+  calls down automatic lightning at its turn. Attack reach is 320 px beyond the
+  fighters' collision radii; enemy detection is a separate 640 px radius. Once
+  spotted, enemies can still be chased beyond detection range.
 
-The 2026-11-14 roster expansion adds another 17 fighters, also **not run or visually checked**.
-See [the roster design](superpowers/specs/2026-11-14-roster-expansion-design.md) for their abilities
-and [the implementation plan](superpowers/plans/2026-11-14-roster-expansion.md) for the handoff.
+Thor prioritizes a ground smash when a grounded enemy is within 70 px plus its
+collision radius and his hammer is in hand. `THOR_MELEE` sets 32 damage, a 75 px
+area and 240 radial knockback. It hits grounded enemies once, spares allies, uses
+the normal 1.1-second cooldown and does not consume the shared skill cooldown.
+Reuse the slam pose and shockwave from the flying landing. Ranged skill rolls
+apply farther away; committed charges and casts finish unless interrupted.
 
-The owner explicitly prohibits running tests, builds, linters, type checkers or verification
-commands without permission. Finish the change, then ask whether they want it tested. This rule
-overrides all automatic testing steps in skills and the historical instructions below.
+Thor's three skills are configured in `THOR_SKILLS`. When a skill is available,
+each eligible attack rolls once: 40% lightning shot, 30% marked storm, 25% flying
+charge, and 5% normal hammer. Any selected skill starts a three-second shared cooldown;
+normal hammer attacks continue between skills. Stun, fear and an airborne hammer
+prevent casting. Setup and pause freeze warnings, flight, projectiles and cooldowns.
 
-Once the owner authorizes testing:
+- Lightning shot: 28 damage, 400 px range. Thor stands still, raises his hammer and
+  charges for 0.7 seconds. Growing hammer sparks and a body shake build with charge
+  progress. Stun, fear or a dead target cancels it. At release he aims at the target's
+  current position and strikes the first enemy along the line, passing through allies.
+  Then chain to the nearest unhit enemy within 130 px of the previous victim, up to
+  five enemies total. Every victim takes 28 damage once. Continue from the previous
+  victim's position even if that hit killed it; skip dead enemies and allies when
+  selecting the next victim. Each hop gets its own visible full-sized lightning link.
+  Show the full strike for 0.3 seconds: a thick icy-white core, blue glow, side branches
+  and an expanding impact ring. It damages once, then fades without repeated hits.
+  Shake uses the simulation tick so it freezes during pause; do not shake the screen.
+- Marked storm: a 70 px circle with a filling progress arc warns for 0.9 seconds.
+  Then a vertical lightning bolt deals 24 damage and stuns enemies for 1.1 seconds.
+  The circle stays at its original position so enemies can dodge. Allies are safe.
+  Keep lightning, hammer charge sparks, storm markers and impact rings blue/cyan.
+- Flying charge: a raised-hammer 0.4-second windup precedes a 0.45-second flight to
+  a fixed point. The body follows an arc above a ground shadow. Landing deals 36
+  damage and 460 knockback to grounded enemies within 65 px, once. Show a hammer
+  slam pose and a small spreading shockwave. Airborne fighters bypass separation
+  and ground melee. Stun or fear interrupts the charge; a dead target cancels its
+  windup. Target death during flight does not cancel the already committed landing.
+  The flying-charge windup also shakes Thor's body with increasing strength.
 
-1. Run `npm run build` and `npm run check` and fix what fails.
-2. Open the game (`npm run dev`), place each of the five, and fix what looks wrong: hinge positions
-   (jaw, arm, wing), where a carried fighter sits in the jaw or talons, where the rainbow starts, how the
-   snake's head meets its body.
+Use object references for skill owners and locked targets. Caster death cancels
+pending casts and shots. Finished impact visuals can fade out. Clear removes all
+fighters and effects and resets all skill state. Do not add a general ability framework.
 
-Do not start a dev server or perform browser checks before authorization either.
+`battle.ts` runs movement and combat at 60 Hz. Pair scans are capped at 300 fighters;
+add a spatial grid only if the cap needs to grow. Keep effects small and quiet.
+Object references keep hammer owners and hit targets distinct when fighters die.
 
-## Where things live
+Wandering follows the pre-V2 stash: at 40% of normal speed, choose a heading every
+90 ticks (1.5 seconds), with every third leg a rest. Stable fighter IDs stagger
+headings and rests so a death does not reshuffle the crowd's movement. Find enemies
+in Honk's original local search area (32 px cells, at least five cells in each direction)
+or the explicit detection radius (Thor: 640 px, Tiny Arms: 520 px);
+already spotted enemies can be chased beyond that area. Combat, stun and an airborne
+hammer take priority over wandering. Clear resets the clock and IDs.
 
-| File | What it holds |
-|---|---|
-| `src/game/units.ts` | `UnitDef`, the drawing helpers, one draw function per fighter, the `UNITS` table, `buildSprites()` |
-| `src/game/sim.ts` | All behaviour. Units are parallel typed arrays, stepped at 60 Hz |
-| `src/game/render.ts` | Draws everything each frame from the sim's arrays and the prebuilt sprites |
-| `src/game/water.ts` | The pond |
-| `checks/sim.check.ts` | One assert-based check per behaviour, no browser needed |
+When an enemy attacks a fighter, that fighter and its entire allied group target
+the attacker, even outside passive sight. Red and Blue rally teammates across
+species; free-for-all rallies the victim's species. Keep this retaliation target
+ahead of nearest-enemy selection until another attack rallies them to a new
+attacker, or the attacker dies or becomes an egg. A lethal hit still rallies the
+survivors. Temporarily held attackers cannot be hit until released. Damage to an
+occupied tower alerts its occupant and group, as do charm and fear attacks.
 
-## Drawing a fighter
+Retaliating Thor fights instead of seeking an empty tower; perched Thor directs
+his summoned lightning at the group's attacker. Movement, range, tower protection,
+flight, water boundaries, cooldowns, committed skills and control effects still
+apply. Falling damage has no attacker and does not rally a group. Clear removes
+retaliation references along with ordinary targets.
 
-A fighter is a function that paints into a 48×48 box with Canvas 2D. It is painted once at 3× resolution
-by `unitSprite()` and stamped from then on.
+Spawn with the hit-size timer at zero. Setup freezes simulation timers, so starting
+new fighters with a size pop would leave them enlarged until Start. Keep the brief
+size pop for actual hits. Thor catches with a brief raised-hand pose instead of
+a size pop; throwing uses a small recoil and an extended arm. His ready, empty,
+throw and catch sprites share one hammer drawing with the projectile. Keep the
+metal facets, small rune, beard strands and helmet highlights readable at game size.
 
-**The box**
+`src/App.tsx` owns placement, selection and setup/running/paused controls.
+`src/index.css` owns the page. Setup and pause freeze all simulation and effects.
+Clear removes all fighters and effects, returns to setup and keeps the selected team
+and fighter. Selected Red or Blue teams cooperate across species. As on main,
+free-for-all means alliances by species, with different species fighting each other.
 
-- Facing right, feet at (24, 44), nothing outside 0–48.
-- Keep the body in the lower two thirds. Heads usually sit around y 8–18, bodies around y 22–38.
-- A bigger fighter is the same 48 box with `size` on its `UnitDef` (1.15 for a horse, 1.4–1.7 for the
-  large ones). Don't draw bigger; scale.
+Tiny Arms (`rex.ts`, migrated from the pre-V2 stash) has 850 HP, 80 px/s,
+40 bite damage, 0.9-second attacks and 120 knockback. His polished artwork uses
+one curved tail/body/head silhouette, a cream belly, a broad snout, a large
+expressive eye and sturdy clawed feet. He is 2× sprite size (one third larger than
+the first migration), with radius 19 and 74 px placement spacing to match.
+Draw the body, hinged jaw and tiny arm separately, with the caught fighter dangling
+inside the jaw. Each surviving bite on a smaller grounded enemy rolls a 35% grab
+chance. Hold for 0.7 seconds, deal quarter-bite damage every ten ticks, then fling
+at 330 px/s for 264 px in the facing direction with a little random spread.
+Thrown fighters follow an arc, tumble, ignore ground separation and cannot steer
+or attack until landing. Landing deals 18 damage to the victim and 9 damage with
+150 knockback to nearby enemies of the thrower within 22 px plus their radius.
+Show orbiting stars and slow the victim for 1.5 seconds. Held fighters cannot act
+or be selected or hit by other fighters; grabbing cancels pending charge actions.
+Stun pauses shaking. Holder death drops the victim; victim death frees the jaw.
+Clear removes grab and throw state. Team rules apply to both bites and landings.
 
-**Use the helpers, not raw paths**
+`TREX_ROAR` gives Tiny Arms a 25% roar chance when a live enemy is within 180 px,
+his attack cooldown is ready and he is free to act. A successful roar replaces
+that bite, scares every unheld, unthrown enemy within 180 px for 1.5 seconds and
+starts a five-second skill cooldown. Reuse fear and `scaredBy` so victims run away
+from the roaring T-Rex; allies remain calm. Failed rolls wait 0.9 seconds before
+retrying, including during pursuit. For 0.55 seconds show a wide-open jaw, a slight
+body tremble and expanding sound arcs; he stands still during the roar. Stun or
+fear cancels the remaining pose. Setup and pause freeze all timers; death and Clear
+remove roar state. Detection reaches 520 px independently of his bite and roar ranges.
 
-| Helper | Use |
-|---|---|
-| `ellipse`, `box`, `poly` | Filled and outlined shapes |
-| `line` | An outlined stroke through points |
-| `tube` | A fat outlined neck or limb between two points |
-| `legs` | Two stick legs with little feet |
-| `eye` | White eye with a pupil looking right |
-| `dot`, `smile` | Small fills without an outline, and a mouth arc |
+Encore (`phoenix.ts`, migrated from main) keeps her orange flame tail and crest,
+with swept crimson-and-gold tail feathers, a layered folded wing, cream chest
+markings, a flame crown, tiny claws and a bright, mischievous eye. Keep these
+details broad enough to read at game size and the team bandanna visible.
+She has
+200 HP, 70 px/s, 1.25× size, 3-damage fire cone every 0.15 seconds and a two-second
+burn at 9 HP/s. Once per second on a breath hit, a flame ring heals Encore and
+allies within 80 px of the hit for 10 HP, capped at their current form's maximum.
+Her first death clears burns, fear, stun and grab/throw state and becomes an
+invulnerable stationary egg. Enemies ignore the egg. After 2.5 seconds it hatches
+into a furious 70-HP chick: 190 px/s, 4-damage pecks every 0.16 seconds, 15 knockback
+and a 1.5-second burn. Eight seconds later she grows back at full health, with
+rebirth spent. A chick death is final too. Use the original egg and chick artwork;
+keep team bandannas on the adult and chick. Fire, healing and lifecycle timers
+freeze with pause/setup and Clear removes their effects.
 
-**Outline**
+Scorch (`dragon.ts`, migrated from main) keeps his green body, with a scalloped
+wing membrane and finger bones, a curling spined tail, plated cream belly,
+stocky clawed feet, ridged horns, scale clusters and an expressive, bright eye.
+Keep these details readable at game size. His original stats are 700 HP, 42 px/s,
+1.7× size, radius 16 and spacing 70. Every 0.15 seconds, breathe a 95 px fire cone
+for 5 damage and 25 knockback, leaving a 3.5-second burn at 9 HP/s. Reuse Encore's
+cone and flame drawing; healing rings remain exclusive to Encore. Team rules,
+egg immunity, pause, setup, death and Clear follow the existing battle loop.
 
-- Colour `INK` (`#221f33`), round caps and joins. `unitSprite()` sets a 2.2 line width; leave it for the
-  main shapes.
-- Small details get thinner lines: 1.0–1.4 for teeth, claws, feathers, spirals, eye rims.
-- The reference doc wants thinner outlines everywhere. That will be done once, in the shared helpers. Do
-  not thin individual fighters; match the current weight.
+Coral Chorus (`siren.ts`, migrated from main) has flowing pink hair with bright
+strands, a coral ornament, pearls, a scalloped seashell top, a curling scaled teal
+tail with layered fins and a microphone with a silver grille. Keep her singing
+expression and team bandanna clear. She has 90 HP, 40 px/s and a 220 px ballad.
+She is water-bound: dry placement creates a small pond. Movement, fear, shoves,
+separation and throws stop at dry shores, including gaps between separate ponds.
+While held she follows the holder, then returns to the last reachable wet position
+on release. Resize rehomes her to surviving water, or creates a new small pond.
+Enemies follow the song for 0.3 seconds after each pulse and cannot attack while
+charmed. Charm interrupts windups, releases grabs and ends when the singer dies.
+After at least two seconds of ballad, an enemy within 70 px plus its radius
+triggers three seconds of death metal. Metal hits enemies in that area for 7
+damage and 45 knockback every 0.2 seconds, and releases the charm so they can fight.
+Show floating pink notes, charm hearts, and lime lightning shapes for metal.
+Both songs spare allies; pause/setup freeze all song and charm timers.
 
-**Colour and shading**
+No Thanks (`ninja.ts`, restored from the pre-V2 roster) has a layered dark hood,
+armour panels, wrapped gloves, boots, belt pouches, mint scarf and a curved katana
+with a bright edge and gold guard. Bake ready, poke and slash poses. He has 70 HP, 115 px/s movement,
+9 damage, 155 px range, a 0.75-second attack cooldown, 35 knockback and 26 px
+placement spacing. Use his katana for close attacks. Shuriken spin as they travel at 420 px/s, stop on the first
+enemy they hit, pass through allies and respect tower protection. Damage uses
+the shared hit path so victims and their allies retaliate.
 
-- One main body colour per fighter, flat, plus at most two accents. Pick a main colour no other fighter
-  uses. Taken so far: toast `#d99a3d`, pickle `#6fbf4a`, chili `#e03a2e`, pancake `#e2a95a`, hedgehog
-  `#6b4a2f`, mozzie `#7d8597`, llama `#f3e6cf`, skunk `#2b2b36`, snake `#8e6fe0`, rex `#d9773a`, gym bro
-  `#ff7a59`, toddler `#7ec8e3`, dad `#4caf8a`, nana `#b48ad6`, dragon `#3fae6b`, phoenix `#ff6b2c`,
-  pegasus `#bfe0ff`, griffin `#dba24a`, siren `#2bb8a6`. White bodies: goose, unicorn.
-- Shared accents: gold `#ffd23f`, butter yellow `#ffe45c`, beak orange `#f08c1b`, skin `SKIN`, blush
-  `#ffb3c7`.
-- Shading is soft and unoutlined: a paler belly ellipse, a translucent darker ellipse under the belly
-  (`rgba(…, .2)`), and optionally a translucent white highlight top-left (`rgba(255,255,255,.22)`). See
-  `rexBody` and `unicorn`. No gradients.
-- The ground shadow is added by `unitSprite()`. Don't draw your own unless the fighter hovers or is drawn
-  by the renderer (see Moving parts).
+With his skill ready, a grounded enemy within 125 px and beyond the combined
+collision radii plus 12 px triggers a 0.22-second dash at 520 px/s. Land one
+2.2× damage hit with 180 knockback and start a 3.2-second skill cooldown. Dash
+does not make him fly; stun, fear, charm, grabbing or an invalid target cancel
+it. Within 130 px of an enemy, he retreats for 1.1 seconds when below 40% HP,
+when its radius exceeds 1.4× his own, when its damage is at least 65% of his
+remaining HP, or when three enemies are within 80 px. Preserve team and FFA
+alliances, group targeting, water movement, pause and Clear. Clear and death
+remove his dash and travelling shuriken. The Character shortcut is 7.
 
-**Face and detail**
+Ninja prefers a tree within 420 px over an empty tower. On reaching a tree, hide
+him in the foliage at 62 px elevation, with the canopy drawn over his body.
+Hidden Ninja is excluded from enemy target selection, retaliation, lightning
+chains and locked pursuit. Damage reveals him; burning or control effects keep
+him exposed. Incidental area damage can still hit him. Each tree shelters only
+one Ninja, regardless of team. Claim its slot on entry and settle for 0.4 seconds
+before attacking. Leaving to slash frees the slot; reserve an available slot
+before starting the return backflip. If another Ninja claimed the home tree,
+choose another free tree or remain on the ground. Death, capture, interruption
+and Clear release claimed slots.
 
-- One eye visible (side-on), with one brow or eyelid line that sets the mood: angry, smug, tired. The
-  face stays calm or determined; the situation is the joke.
-- The silhouette plus one feature says what it is from across the page: a huge head and teeth, a horn, a
-  wing, a hooked beak.
-- Aim for three to five small details beyond the silhouette (stripes, spots, a ruff, a flank mark, a
-  tongue). Each should read at 30px tall; if it doesn't, drop it.
-- Put a short comment on each part of the drawing, with the joke where there is one
-  (`// tiny arms: can't reach anything, waves anyway`).
+When an enemy comes within 180 px and his 3.2-second skill cooldown is ready,
+Ninja reveals himself and blinks from the tree through a grounded target over
+0.18 seconds, ending 36 px beyond the target's initial position. There is no
+walking approach or preliminary poke. Sweep the whole travelled segment for one
+19.8-damage katana slice with 180 knockback. Show a mint movement streak, drawn
+blade and broad pale slash arc. Both tree ambushes and ordinary dash hits leave
+a bright, mint-edged crescent and impact streaks at the enemy for 0.3 seconds.
+Animate their expansion and fading with simulation time so Pause freezes them
+and Clear removes them. After the slash, stay visible and grounded for two
+seconds, then run on the ground until within 64 px of an available tree before
+backflipping into it over 0.55 seconds, with a 44 px
+jump arc and one backward
+rotation; hide again on landing. If the target dies or becomes unavailable, jump
+back instead of pursuing another enemy mid-combo. Control effects or grabbing
+interrupt the ambush. The two-second tree re-entry cooldown also applies after
+an ordinary dash slash and cannot be bypassed by another tree or an interruption.
+Ninja may fight or retreat on the ground while recovering. Pause freezes every phase and Clear/death remove all cover
+and combo references. Retain the old timid behavior outside tree ambushes.
 
-## Moving parts
+Ninja can also occupy a tower, respecting its single slot, climb and protection
+rules. Throw shuriken downward from the roof with matching projectile elevation;
+use the katana against a close enemy at roof height. Lightning stays exclusive
+to Thor. If a tree becomes available within 64 px, Ninja backflips out of the tower to
+hide there, freeing its slot. Resize keeps the home tree as the return destination.
 
-Most fighters are a single sprite. When one part needs to move on its own, split the sprite.
+Water uses the original `water.ts` renderer: smooth pale shallows, teal shores,
+deeper blue centers on broad ponds and softly drifting patches. `terrain.ts`
+stores an 8 px mask and overlapping brush stamps, preserving terrain on resize.
+Use W or the Water tray button to paint ponds with click/drag or Enter. Water is
+independent of team and the fighter cap. Grounded land movement is halved; Coral Chorus
+swims at full speed. Airborne movement is unaffected. Show translucent submerged
+bodies and a pale waterline. Surface drift follows battle ticks so setup/pause
+freeze it. Clear removes the water too. Keep the tray scrollable on small screens.
 
-**Hinged parts** (T-rex jaw and arm, wings)
+Tree (E) is a cover brush in Terrain, with a leafy green crown, branching brown
+trunk, roots and a soft ground shadow. Reuse its drawing for the tray icon and
+battlefield. Click, drag or press Enter to plant trees; use 60 px placement
+spacing and a 200-tree cap. Preserve them on resize, keeping the 108 px tree in
+view, and remove them with Clear. Draw trees and towers after characters,
+projectiles and battle effects so their opaque shapes cover anything overlapping
+them. Sort trees and towers together by their base Y position, ascending, so
+lower bases appear in front of higher ones regardless of placement order. Use
+base X to resolve equal Y positions without reordering the simulation arrays.
+Ninja can hide in
+the crown and return to it after a katana ambush.
 
-1. Write one draw function per piece: `rexBody`, `rexJaw`, `rexArm`.
-2. Export the hinge as a point in sprite px: `REX_JAW = [29, 17]`.
-3. Write a combined function for `UnitDef.draw`. That is the tray and tally icon, so it must show the
-   whole fighter.
-4. Build the pieces in `buildSprites()` with `unitSprite(piece, false)` (no shadow) for everything except
-   a ground-standing body.
-5. In `render.ts`, draw the body, then swing each piece with `part(sprite, HINGE, angle)`.
+The Terrain category also contains Tower (T), a stone structure 164 px tall with
+battlements, narrow windows, a wooden door and a gold flag. Click, drag or press
+Enter on the battlefield to place towers. Keep their bases at least 80 px apart,
+cap placement at 100 towers, and leave room above the roof for its occupant when
+resizing. Clear removes towers alongside the water and releases their occupants.
 
-**Fliers** set `flies: [body, wing]` on the `UnitDef`. That one field gives them a hover, a shadow that
-stays on the ground, a flapping wing around `WING`, full speed over water and no wading. Reuse the `wing`
-factory with new colours before drawing a new wing.
+Each tower has 500 HP and holds one character, Thor or Ninja, including during ascent. Thor
+seeks the nearest empty tower within his 640 px detection range, runs to its base
+and climbs to the 128 px roof over 0.8 seconds. From there he stays in place and
+always summons his marked lightning instead of rolling for another skill. Use
+the existing 0.9-second warning, 24 damage, 70 px area, 1.1-second stun and
+three-second cooldown. Team and species alliances still apply.
 
-**Drawn by the renderer** (the snake's body) is for shapes that change length. Only the head and crown
-are sprites; the body is circles drawn each frame in two passes (ink outline, then fill). Use this only
-when a sprite cannot do the job.
+Ground enemies target an enemy occupant's tower and damage the structure with
+their normal attack damage and cooldown. Ground projectiles and lightning cannot
+bypass it to damage or stun its occupant; charm, roar and ground melee cannot
+reach the roof. Cracks and a health bar show tower damage. At zero HP it collapses
+over 0.7 seconds and releases its occupant, who visibly falls, takes 25 damage and
+is stunned for one second on landing. Dead occupants free their tower immediately.
 
-**Carried fighters** are skipped in the main loop and drawn by whoever holds them, between the holder's
-body and its front piece, so the jaw or talons overlap them.
+Scorch, adult/reborn Encore and Honk can fly up to the occupied roof and attack
+the occupant directly with their existing fire or pecks. An egg or phoenix chick
+cannot fly. Flight does not consume the tower's one occupant slot. Flyers descend
+when their target leaves the tower. Keep attack and burn visuals at their current
+elevation, and freeze climbing, flight and collapse during setup or pause.
 
-## Animation
+Honk, Scorch and adult/reborn Encore flap their wings during flight, tower
+ascent, hovering and descent. Bake eight wing poses per team and reuse them;
+only the wings change shape, keeping faces, bodies and team markings steady.
+Use faster beats for Honk and slower ones for Scorch, with a per-fighter phase
+offset. Select frames from battle ticks so setup and pause freeze wing motion.
+Flying stun overlays use the matching wing frame. Ground poses, phoenix eggs
+and chicks keep their existing artwork.
 
-Every fighter already gets these from the renderer for free. New behaviour should drive them, not add a
-parallel system.
+Every fighter walks. Standing poses (and Spartan guard, mantis carry/guard,
+Sword Saint on foot) get an eight-frame walk cycle: each draw function takes
+an optional stride and swings its legs from the hip with `leg()`/`stride()` in
+`art.ts` — partners half a stride apart, diagonal pairs for the dragon, a tripod
+gait for ants, shoes shuffling under Mei's robe and a swaying tail for the siren.
+Cycles are registered in `units.ts` (`walks`) and built the first time a pose
+moves; zombie variants tint the same frames. Frames follow `fighter.phase`, so
+pause freezes them, and they only play while grounded, unstunned and unfrozen.
+Mounted cavalry keep their gallop; eggs, nests and anthills stay still.
 
-| Signal | Where | What it looks like |
-|---|---|---|
-| Walk | `phase` | Bobs 2.5px and tilts ±0.1 rad as it moves |
-| Attack | `atkT` 1→0 in 0.2s | Lunges 4px forward and tips 0.45 rad |
-| Hit or spawn | `hitT` 1→0 in about 0.17s | Pops 22% bigger |
-| Facing | `face` | Sprite is mirrored |
-| Hover | `flies` | Floats 12px up (30px when carrying), drifting ±2px |
-| Thrown | `airT`, `airD` | Arcs up to 45px high for a full throw and tumbles |
+Ant (0) uses its original rust-red three-part body, six legs, antennae, one large
+eye and mandibles, with a small team band. Keep its 0.65 sprite scale and 14 px
+placement spacing. It bites for 3 damage every 0.45 seconds and moves at 85 px/s.
+Ants build at 10, 20, 40, 80 living same-side workers, preserving builders and
+doubling only on completion. Gather at a nearby dry site with 70 px clearance
+from other hills or towers, enter over 0.25 seconds, then dig for three seconds.
+Show the original earthy mound rising, worker counts, a progress bar and hopping
+dirt flecks. Workers disappear underground and emerge alive after completion or
+destruction. Hills stay rooted, take damage, and hatch an ant every four seconds.
+They count toward the current 300-entity cap and wait at capacity. Hide Anthill
+from paint brushes; keep its count in the tally. Free-for-all ants and hills ally.
 
-Rules of thumb:
+Available ants carry permanent enemy remains to completed friendly hills in
+crews of two to eight. Draw still fallen sprites, thin grip lines and a hauling
+lean; full crews must be present before a body moves. Interrupted workers stop
+the load; replacements can join. Deliveries shrink through the entrance over
+0.6 seconds, without changing production. A lost hill releases its workers and
+drops incoming bodies. Construction preempts hauling, dragon meals are exclusive,
+and a phoenix's temporary rebirth leaves no collectable body. Keep at most 4,000
+ant remains. Pause/setup freeze activity; Clear resets bodies and colony progress.
 
-- Movement is sine-based and keyed to `sim.tick` or `phase`, with `+ i` so a crowd isn't in step.
-- Part swings stay under about 0.7 rad.
-- To show "something happened" to a fighter, set `hitT = 1`. To show "it did something", set `atkT = 1`.
-- A pose change is a small rotation added to `rot` in `render.ts` (the unicorn's head-down charge is
-  +0.3 rad), not a second sprite.
+Migrate one creature at a time from `main` or the stash `Before Inkfight V2 restart`,
+bringing only what it needs. Do not restore the whole old simulation or roster.
 
-## Effects
-
-Effects are small and quiet: about a third of a fighter's size or less, a few plain shapes, gone in a
-second or two.
-
-| Effect | Trigger | How it is drawn |
-|---|---|---|
-| Dizzy stars | `dizzyT` after a thrown fighter lands | Three 3px gold stars orbiting above the head |
-| Speed lines | `rush` (charging) | Three 9px grey (`#9a9aa8`) lines streaming behind |
-| Rainbow charge | `beam === 1` | Paper-thin turn, clenched wiggle, frantic wings and six sparkles sucked into the rump over 1.1s |
-| Rainbow blast | `beam === 2` | Six straight parallel bands reaching 620px, a fading muzzle ring and a recoil skid; one hit at release |
-| Ant construction | `buildFor`, `inside`, `entryT`, `colonyT`, `colonyWorkers` | Workers enter the doorway over 0.25s and work underground; dirt hops from the entrance as the mound rises over 3s. A small count and progress stroke show the work; surviving builders emerge on completion or destruction |
-| Ant emergence | completed anthill's `atkT` | Three fading dirt specks at the entrance and the new ant's normal spawn pop, every 4s |
-| Fallen bodies | `cAlive`, `cType`, `cSize`, `cStage`, `cLook` | Frozen sprite snapshots on their side, X eyes, subdued colour and a soft floor shadow; independent of recycled live-fighter slots |
-| Ant hauling | `haulFor`, `haulSlot`, `cNeed`, `cHome`, `cEnter` | Two to eight ants grip positions around a body, lean and sweat while moving it together; it shrinks into the destination entrance over 0.6s and disappears |
-| Millipede/car | `millipedes.curlT`, `group`, `assemblyT`, `wheelPhase` | A segmented bug curls into a rolling wheel; four allies shimmy into a car with separately spinning millipede wheels and a wobbly chassis |
-| Mantis ritual | `mantises.scenes`, `member`, `role` | A real captive dangles between forelegs, allies wait around a small dust circle, and one bowing challenger steps forward at a time |
-| Spider attack | `spiders.webT`, `windT`, `jumpT`, `mount`, `clingT` | A traveling silk pellet leaves temporary leg threads; a crouch and jump arc end in a brief vulnerable clinging bite burst |
-| Spider nest/brood | `spiders.nestT`, `weaving`, `body`, `wrapT`, `cocoons`, `birthT` | A nest weaves into view, real bodies trail on silk and gain wrapping bands, and five visible cocoon bundles twitch before one spider emerges |
-| Burning | `burnT` | The `flame` sprite at half size, flickering on the head |
-| Charmed | `lureT` | The `heart` sprite at 0.3 size above the head |
-| Healing ring | `rLife` | Twelve small flames in a spreading circle |
-| Foam and leaves | `oLife` | White ellipses behind waders; green leaves from bushes |
-| Ink splat | death | The fighter's `color`, fading over five seconds |
-| Notes and bolts | siren | Too big today; shrink before copying their size |
-| Shock/X-ray | `shockT` | A dark silhouette with white cartoon bones, clipped to the victim's sprite; fades without strobing |
-| Spin | `spinT` | Sprite turns edge-on while small elliptical sword swishes circle it |
-| Jump | `leapT` | Sine arc with a shadow on the ground; capybara leans rump-first |
-| Landing/pose | `pulseT` | One fading elliptical dust or ring-light ring |
-| Cat brawl | `scrapT`, `scrapBy` | A short smoke cloud over both participants with paws and claws poking out |
-| Panic | `fearT` | Ninja, or anyone a goose just pecked, turns away, trails speed lines and sheds a small blue sweat drop |
-| Honk | `scare` fighter attacking (`atkT`) | Three small grey sound arcs off the beak, fading with the lunge |
-| Lawn | `lawn` fighter walking | Ordinary bush stamps planted behind it; no separate effect |
-| Toasting | `grow` on a `grudge` fighter | The `char` silhouette faded in over the body, up to 55%; two grey steam puffs from three hits on |
-| Full belly | `grow` on a `swell` fighter | The sprite grows 12% a sip, a red ellipse fills the abdomen, and it wobbles |
-| Toppled | `downT` | Sprite rotated onto its back, rocking, lifted 8px to lie on the ground |
-| Spat on | `blindT` | A pale blue blob and drip over the face; the fighter sways as it stumbles |
-| Pearl string | projectile from a fighter with negative `knock` | A thin tea-coloured line from the straw to the pearl |
-| Wired / crashed | `moodT` on a `crash` fighter | Wired: 1.2px jitter and speed lines. Crashed: tipped face first with the sleep bubbles |
-| Scrolling | `phoneT` > 0 | A tiny dark phone with a pale screen held up to the face, head tilted down |
-| Leg-hug | `latchT` | The hugger sits at the victim's side, leaning in and swaying; the victim shows sticky footing |
-| Squish | `hitT` on a `squish` fighter | Sprite squashes wide and flat, then springs back with the attack lunge |
-| Spotlit | `spotT` | A small pale-yellow four-point sparkle over the head |
-| Second look | `alt` (dad `away`, hedgehog `rollT`, promoted intern) | Sprite swapped for the fighter's `alt` drawing |
-| Sandal on the floor | `away === 2` | Pink sandal lying at `itemX/itemY`; dad hops toward it |
-| Syrup spot | terrain kind 2 | Flat translucent brown blobs with a fallen pancake; walkers through it show sticky footing |
-| Cheese strand | `tetherT` | Yellow line, droopy when slack, thinner when taut |
-| Rolling | `rollT` | Spiky ball sprite spinning, with speed lines |
-| Stink cloud | `kLife` | Four wobbling translucent green puffs and three wavy lines, drawn over fighters |
-| Overworked | `bossTick` | The blue sweat drop on interns a manager is hurrying |
-| Team bandanna | `team` is red or blue | A 3px band in `TEAM_COLORS` just under the sprite's top edge, knotted at the back with two fluttering tails; fades with a hider; `band` on the fighter overrides the height |
-
-To add an effect:
-
-- If it follows one fighter, add a timer array to the sim and draw it in the fighter loop in `render.ts`
-  after the body. Fade with `globalAlpha` from the timer, then reset `globalAlpha` to 1.
-- If it is left behind on the page, use a fixed-size ring buffer like `oLife` or `sLife`.
-- Draw simple shapes directly with canvas paths. Make a sprite only for something outlined and reused
-  (flame, heart).
-- No text, no screen shake, no flashes bigger than the fighter.
-
-## Behaviour rules (sim.ts)
-
-- **State is a typed array** indexed by unit slot, declared with a one-line comment. Reset it in
-  `spawn()`, because slots are reused.
-- **One optional field on `UnitDef` per quirk** (`grab`, `charge`, `flies`, `carry`, `eats`), with a
-  comment saying what it does. The sim checks the field, never the fighter's key.
-- **Teams**: red, blue, or free-for-all (stored as `2 + type`, so every type is its own side). Friend or
-  foe compares `team`, never `type`, and anything a fighter makes (projectiles, stink clouds, throws,
-  hatchlings, summons) inherits its side.
-- **Reuse what exists**: `hit()` for a landed attack, `damage()` for raw damage, `toss()` to send someone
-  through the air, `land()` for the landing, `burnT` and `slowT` for after-effects.
-- **No allocation in `step()`.** Area scans copy the grid loop used in `explode()`.
-- **Every gimmick shows on screen.** If it changes a number, it also sets `hitT`, `atkT` or an effect.
-- **Delayed targets have identity**: dash/leap/brawl locks record the slot's generation, so a hatched
-  or respawned fighter cannot inherit the old fighter's incoming ability.
-- **Water-bound fighters** set `waterbound`. Dry placement creates a puddle; movement and separation
-  are clipped back to the shoreline. Existing sirens remain amphibious.
-- **Shared quirks**: `burst` uses the projectile pool, `orbit` keeps throwing while circling, `shock`
-  briefly stuns, `spin` and `pulse` use enemy-only area hits, `regen` recovers while resting,
-  `dash`/`timid` supply the ninja's lunge and panic, and `leap` selects a slam or opening brawl.
-  From [fighter quirks phase 1](fighter-quirks/phase-1-quick-wins.md): `scare` panics the victim,
-  `launch` throws it with `toss()`, `bully` targets the toughest fighter in sight, `lawn` plants
-  bushes, `brine` leaves puddles after an explosion, and `pops` fires kernels while burning.
-  From [phase 2](fighter-quirks/phase-2-timers-and-states.md): `grudge` locks onto the first attacker,
-  `swell` pops after enough bites, `topple` knocks it flat, `blind` takes away the victim's target,
-  `crash` alternates caffeine and sleep, and a negative `knock` pulls.
-  From [phase 3](fighter-quirks/phase-3-interactions.md): `wildfire` burns spread on contact,
-  `distract` hands out phones that spread on contact, `latch` hugs a leg, `squish` springs knockback
-  back at the attacker, and `spotlight` makes nearby enemies target the poser.
-  From [phase 4](fighter-quirks/phase-4-bigger-builds.md): `fetch` must retrieve its projectile,
-  `alt` is a second sprite, `stack` loses layers as syrup, `tether` holds and drains, `roll` bowls
-  when cornered, `stink` sprays clouds, and `promote` turns a killer into a manager.
-- **Contact effects go in `touch(i, j)`**, called from the separation loop for every overlapping pair.
-  Anything that spreads must weaken each hop so it dies out.
-- **Cancel moves with `stopMoves(i)`** (brawl, jump, dash, spin, leg-hug) whenever a fighter is
-  stunned, thrown, held, charmed or killed. Add new move timers to it.
-- **Projectiles know who fired them**: `owner(p)` returns the shooter's slot, or -1 if it is gone.
-  `hit()` takes `from` (who is touching it: thorns, eating) and `by` (who gets the blame, also at range).
-- **Terrain can change mid-fight.** Water redraws from `waterVer`, bushes re-sort from `terrainVer`.
-  Bump `waterVer` only when water changes.
-- **One check per behaviour** in `checks/sim.check.ts`: build a tiny scene, step it, assert. Where luck
-  is involved, set the chance to 1 for the check and put it back.
-- Mark a known limit as `// shortcut: <the limit>, <when to fix it>`.
-
-## Voice
-
-- Names are short and silly: Sir Toast, Honk, Tiny Arms, Sparklebutt, Noodle.
-- The blurb is one line that says what it does, with the joke in it, and no full stop at the end:
-  "Bites, shakes, flings. Cannot clap".
-- Keep archetypes distinct from Battle Draw with original drawings and behaviour. The owner expressly
-  requested a ninja on 2026-11-14; ours wears a mint scarf and panics when threatened. Battle Draw also
-  has a Snake; ours is kept distinct by its colour and its eat-and-grow behaviour. Do not copy assets.
-
-## Adding a fighter: the steps
-
-1. Pick the tab, a name, a blurb, a main colour nobody has, and one gimmick.
-2. Write the draw function(s) in `units.ts` using the helpers.
-3. Add the entry to `UNITS`. Copy the stats of the closest existing fighter and adjust.
-4. If the gimmick is new, add one field to `UnitDef`, the state arrays and logic in `sim.ts`, and its
-   visible reaction in `render.ts`.
-5. Add one check.
-6. Ask the owner whether to run the build and the check, then look at it in the browser at normal zoom.
-   It should be recognisable at 30px tall.
+Do not run tests, builds, linters, type checks, dev servers or browser verification
+without the owner's permission. Finish each change, then ask whether to test it.

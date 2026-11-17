@@ -5,13 +5,13 @@
   color: var(--ink);
 }
 
-html, body, #root {
+html, body, #root, main {
   height: 100%;
   margin: 0;
   overflow: hidden;
 }
 
-/* notebook page: ruled lines plus a red margin */
+/* Notebook page: ruled lines plus a red margin. */
 body {
   background:
     linear-gradient(90deg, transparent 56px, #f2a9a0 56px, #f2a9a0 58px, transparent 58px),
@@ -27,6 +27,11 @@ body {
   height: 100%;
   touch-action: none;
   cursor: crosshair;
+}
+
+.stage:focus-visible {
+  outline: 3px solid #3d6fd8;
+  outline-offset: -3px;
 }
 
 .title {
@@ -59,7 +64,7 @@ button {
   color: inherit;
   background: #fff;
   border: 2px solid var(--ink);
-  border-radius: 12px 14px 11px 15px; /* slightly wonky, hand-drawn */
+  border-radius: 12px 14px 11px 15px;
   box-shadow: 2px 3px 0 var(--ink);
   cursor: pointer;
 }
@@ -79,7 +84,10 @@ button:focus-visible {
   top: 14px;
   right: 16px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
+  max-width: calc(100vw - 32px);
 }
 
 .actions button {
@@ -87,13 +95,6 @@ button:focus-visible {
   font-size: 18px;
 }
 
-.actions {
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  max-width: calc(100vw - 32px);
-}
-
-/* team for the next fighter: a little segmented strip */
 .teams {
   display: flex;
   gap: 4px;
@@ -126,16 +127,10 @@ button:focus-visible {
   border-radius: 50%;
 }
 
-.tally .dot {
-  width: 16px;
-  height: 16px;
-  margin: 0 5px;
-}
-
 .tally {
   position: absolute;
   left: 70px;
-  bottom: 16px;
+  bottom: 160px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -158,62 +153,50 @@ button:focus-visible {
   position: absolute;
   bottom: 14px;
   left: 50%;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: calc(100vw - 24px);
+  max-width: calc(100vw - 32px);
 }
 
-.tabs {
+.categories {
   display: flex;
-  gap: 6px;
-  max-width: 100%;
-  overflow-x: auto;
-  padding: 3px 3px 5px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }
 
-.tabs button {
-  flex-shrink: 0;
-  padding: 2px 12px;
-  font-size: 16px;
-  box-shadow: 1px 2px 0 var(--ink);
-  opacity: 0.6;
+.categories button {
+  padding: 4px 14px;
+  font-size: 18px;
+  white-space: nowrap;
 }
 
-.tabs button[aria-selected='true'] {
-  opacity: 1;
+.categories button[aria-pressed='true'] {
   background: #ffe45c;
 }
 
-.fighters {
+.tray-items {
   display: flex;
   gap: 10px;
-  min-height: 76px;
-  align-items: flex-end;
-  max-width: 100%;
   overflow-x: auto;
-  padding: 8px 4px 10px;
-  box-sizing: border-box;
-}
-
-.empty {
-  margin: 0 0 24px;
-  font-size: 18px;
-  opacity: 0.55;
+  padding: 10px 4px 6px;
 }
 
 .fighter {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
   align-items: center;
   width: 92px;
-  flex: 0 0 92px;
   padding: 4px 4px 6px;
   font-size: 15px;
   line-height: 1.1;
+}
+
+.fighter[aria-pressed='true'] {
+  background: #ffe45c;
+  transform: translateY(-6px) rotate(-2deg);
 }
 
 .fighter img {
@@ -222,18 +205,11 @@ button:focus-visible {
   pointer-events: none;
 }
 
-.fighter[aria-pressed='true'] {
-  background: #ffe45c;
-  transform: translateY(-6px) rotate(-2deg);
-}
-
 @media (max-width: 720px) {
   .title { font-size: 28px; left: 70px; transform: rotate(-2deg); }
-  .tally { bottom: 140px; }
-  .fighters { gap: 6px; min-height: 60px; }
-  .tabs button { padding: 2px 8px; font-size: 14px; }
   .actions { top: 52px; gap: 6px; }
   .actions button, .actions .teams button { padding: 4px 9px; font-size: 15px; }
-  .fighter { width: 62px; flex-basis: 62px; font-size: 12px; }
+  .tally { left: 16px; bottom: 160px; font-size: 15px; }
+  .fighter { width: 62px; font-size: 12px; }
   .fighter img { width: 40px; height: 40px; }
 }
