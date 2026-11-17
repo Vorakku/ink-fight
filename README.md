@@ -13,6 +13,10 @@ A fresh starting point for Inkfight, keeping the notebook page and basic control
   A talisman flies at 380 px/s and bursts on the first enemy it meets, or where the target
   stood, for 20 damage and 80 knockback to enemies within 40 px. Tuning lives in
   `MEI_YUANZHI` and `MEI_TALISMAN` in `meiyuanzhi.ts`.
+  His attacks read as talisman sorcery: thrown charms spin with ink-brush trails and
+  burst into a white flash, an ink splash, tumbling paper and a rune seal; the barrage
+  conjures from a rotating circle, the escape leaves a crescent streak, the shield is a
+  segmented charm barrier, and fox form keeps a quiet ember aura.
   Overwhelmed: each hit on him adds to a melee or ranged count (melee when the attacker is
   within 40 px of touching him) that drains one per second; three triggers a skill. Up close
   he backflips (immune), drops a talisman that stuns enemies within 75 px for 1.6 seconds in

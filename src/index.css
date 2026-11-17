@@ -11,6 +11,9 @@ html, body, #root, main {
   overflow: hidden;
 }
 
+/* Follow the mobile browser's visible area as its toolbars show and hide. */
+main { height: 100dvh; }
+
 /* Notebook page: ruled lines plus a red margin. */
 body {
   background:
@@ -18,6 +21,8 @@ body {
     repeating-linear-gradient(var(--paper) 0 31px, #cfe0ee 31px 32px);
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .stage {
@@ -67,6 +72,7 @@ button {
   border-radius: 12px 14px 11px 15px;
   box-shadow: 2px 3px 0 var(--ink);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 button:active {
@@ -81,13 +87,13 @@ button:focus-visible {
 
 .actions {
   position: absolute;
-  top: 14px;
-  right: 16px;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(16px + env(safe-area-inset-right));
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right));
 }
 
 .actions button {
@@ -151,12 +157,12 @@ button:focus-visible {
 
 .tray {
   position: absolute;
-  bottom: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right));
 }
 
 .categories {
@@ -206,10 +212,27 @@ button:focus-visible {
 }
 
 @media (max-width: 720px) {
-  .title { font-size: 28px; left: 70px; transform: rotate(-2deg); }
-  .actions { top: 52px; gap: 6px; }
+  .title { top: calc(8px + env(safe-area-inset-top)); left: calc(70px + env(safe-area-inset-left)); font-size: 28px; transform: rotate(-2deg); }
+  .actions { top: calc(52px + env(safe-area-inset-top)); gap: 6px; }
   .actions button, .actions .teams button { padding: 4px 9px; font-size: 15px; }
-  .tally { left: 16px; bottom: 160px; font-size: 15px; }
+  .tally { left: calc(16px + env(safe-area-inset-left)); bottom: calc(150px + env(safe-area-inset-bottom)); font-size: 15px; }
+  /* One swipeable row of tabs instead of 3-4 wrapped rows eating the field. */
+  .tray { left: calc(16px + env(safe-area-inset-left)); right: calc(16px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)); transform: none; }
+  .categories { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; padding: 2px 4px 4px; gap: 6px; }
+  .categories button { flex-shrink: 0; padding: 3px 10px; font-size: 16px; }
+  .tray-items { gap: 8px; padding-top: 8px; }
   .fighter { width: 62px; font-size: 12px; }
   .fighter img { width: 40px; height: 40px; }
+}
+
+/* Phones in landscape: little height, so tuck the title away and shrink the tray. */
+@media (max-height: 500px) {
+  .title { display: none; }
+  .actions { top: calc(8px + env(safe-area-inset-top)); }
+  .tally { bottom: auto; top: calc(8px + env(safe-area-inset-top)); max-height: calc(100dvh - 150px); overflow: hidden; font-size: 14px; }
+  .tally img { width: 20px; height: 20px; }
+  .tray-items { padding-top: 6px; padding-bottom: 2px; }
+  .fighter { width: 56px; padding: 2px; font-size: 11px; }
+  .fighter img { width: 32px; height: 32px; }
+  .fighter[aria-pressed='true'] { transform: translateY(-3px) rotate(-2deg); }
 }

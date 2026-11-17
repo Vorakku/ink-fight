@@ -67,6 +67,61 @@ fighters and effects and resets all skill state. Do not add a general ability fr
 
 `battle.ts` runs movement and combat at 60 Hz. Pair scans are capped at 300 fighters;
 add a spatial grid only if the cap needs to grow. Keep effects small and quiet.
+
+Mei Yuanzhi is the deliberate exception to small, quiet effects: his talismans spin
+with ink-brush trails and leave rune-seal bursts, his barrage has a conjuring circle,
+and his fox form keeps an ember aura. Keep the extra flourish inside his own draw
+helpers, cap the particles, and add no screen shake.
+
+Yan Jin (`yanjin.ts`, Hero) carries two swords: a slender long sword in hand and a colossal
+greatsword slung across his back. White hair with a pink lock, a gold mark around the eye,
+a high dark scarf, an open dark coat over a white robe with crossed straps and a rope belt,
+and striped trousers. His combo (`YAN_JIN_COMBO`) is three quick long-sword slices, a short
+pause, then a greatsword slam (`YAN_JIN_SLAM`) in front of him that knocks every grounded
+enemy in range into the air (`knockup`), leaving a crack. Knocked-up fighters are not
+grounded, drift with the slam's knockback and land with a brief stun.
+
+With no enemy around and hurt, Yan Jin meditates (`YAN_JIN_REST`): he sits cross-legged with
+eyes closed, both swords spin up overhead and plunge point-first into the ground, the long
+sword on one side and the greatsword on the other, with a ring, dust and lasting cracks. He
+then floats above a turning yin-yang seal on the ground, healing until an enemy appears or
+he is hit. The animation is drawn live from the meditation's elapsed time; the float is
+visual only and does not change his elevation.
+After a moment the swords pull free and circle him on a faint gold ring, opposite each
+other, passing in front of and behind him; the cracks stay where they struck.
+
+His effects are ink painting in yin and yang: the long sword's slices leave white (yang)
+brush strokes with dry-brush hairs and flicked drops, and the greatsword's smash is a heavy
+black (yin) brush stroke ending in an ink splash, with an ink-coloured impact ring.
+
+Yan Jin controls gravity. His first skill, Gravity Seal (`YAN_JIN_SEAL`), fires when an enemy
+comes within 80 px: he drives the long sword point-first into the ground and an inked circle
+of rotating characters (重力引浮天地陰陽) opens under him, 120 px wide and drawn and tested at
+0.6 depth. Every grounded enemy in it, including ones that walk in, floats about 40 px up,
+tumbling and unable to act (`float`). After three seconds he pulls the sword out and they all
+slam down for 30 damage and a 1.6-second stun. Stun, fear, freeze, being grabbed or thrown, or
+his death pulls the sword early and drops them. Nine-second cooldown.
+The seal is white with black characters: white is reverse gravity (things float), black, his
+black hole, is gravity.
+
+Yang Ward (`YAN_JIN_WARD`): when an enemy projectile (shuriken, spear, spirit sword or talisman)
+within 120 px is heading at him, he presses the long sword into the ground and a white yang dome
+46 px wide rises with the yang emblem above it. Every enemy projectile entering it hangs still,
+haloed in white, for one second; then he spins twice and sends each one back at whoever threw
+it (or back the way it came if they died), 1.2 times faster and now his. Seven-second cooldown;
+stun, freeze or being moved breaks it and the held projectiles fly on.
+
+His second skill, Catastrophe (`YAN_JIN_CATASTROPHE`), fires when at least two enemies are
+within 100 px (22-second cooldown, first available six seconds after spawning). He plants the
+long sword and a Gravity Seal lifts them; he leaves the sword standing, backflips back and up,
+and hovering there grows the greatsword into a colossal black blade trailing ink smoke. He
+cleaves down through the floaters (35 damage) with a giant black brush stroke and lands; a
+black hole opens above the spot and spins them inward for two seconds, then bursts: a white
+flash, an ink shock ring and thrown ink, 70 damage to every floater and to grounded enemies
+within 140 px, and everyone, Yan Jin included, is thrown clear. Once started it cannot be
+interrupted, and he cannot be hit while airborne. Plain impact rings must keep a life of at
+most 0.4 seconds, or their radius goes negative.
+
 Object references keep hammer owners and hit targets distinct when fighters die.
 
 Wandering follows the pre-V2 stash: at 40% of normal speed, choose a heading every

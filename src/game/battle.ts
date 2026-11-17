@@ -16,11 +16,14 @@ import { BCELL, drawTower, drawTree, TOWER_COLLAPSE, TOWER_HEIGHT, TOWER_HP, TOW
 import { drawWater, sinkAt } from './water.ts'
 import { ZOMBIE, ZOMBIE_INFECTION } from './zombie.ts'
 import { VAMPIRE, VAMPIRE_BAT, VAMPIRE_FIRE_WEAKNESS } from './vampire.ts'
-import { drawFoxBlast, drawFoxClaw, drawFoxTails, drawFoxTalisman, drawMeiShield, drawMeiSmoke, drawMeiStar, drawTalisman, drawTalismanMine, MEI_AURA, MEI_BARRAGE, MEI_CLAW, MEI_MINE, MEI_HANDS, MEI_REST, MEI_ESCAPE, MEI_FLAME, MEI_FOX, MEI_PRESSURE, MEI_SHIELD, MEI_SPIRITS, MEI_STAR, MEI_TALISMAN, starDashAt, MEI_TRANSFORM, MEI_YUANZHI } from './meiyuanzhi.ts'
+import { drawFoxBlast, drawFoxClaw, drawFoxTails, drawMeiShield, drawMeiSmoke, drawMeiStar, drawTalisman, drawTalismanMine, MEI_AURA, MEI_BARRAGE, MEI_CLAW, MEI_MINE, MEI_HANDS, MEI_REST, MEI_ESCAPE, MEI_FLAME, MEI_FOX, MEI_PRESSURE, MEI_SHIELD, MEI_SPIRITS, MEI_STAR, MEI_TALISMAN, starDashAt, MEI_TRANSFORM, MEI_YUANZHI, drawTalismanBurst, drawTalismanShot, drawTalismanHover, drawFoxShot, drawMeiConjure, drawMeiFlipStreak, drawMeiTransform, drawFoxAura, drawMeiMeditate } from './meiyuanzhi.ts'
 import { CATCH_COUNT, drawCatch, drawCrater, drawFishingRod, drawFlyingSword, drawGiantSword, drawMeditationAura, drawSaintSlash, drawSonicTrail, drawSwordFan,
   fishingPose, SAINT_SLASH_DURATION, swordSlot, SWORD_SAINT, SWORD_SAINT_FISHING, SWORD_SAINT_GIANT, SWORD_SAINT_MELEE, SWORD_SAINT_REST, SWORD_SAINT_STORM,
   SWORD_SAINT_SWORDS } from './swordsaint.ts'
 import { ANT, ANTHILL, COLONY_BUILD, ANT_ARMY, ANT_PROVOKE } from './ant.ts'
+import { drawYanBlackHole, drawYanBurst, drawYanColossus, drawYanDash, drawYanMeditation, drawYanPlantedSword, drawYanSeal, drawYanSmash, drawYanSwing,
+  drawYanHeld, drawYanWard, inYanSeal, yanFloat, YAN_JIN, YAN_JIN_CATASTROPHE, YAN_JIN_COMBO, YAN_JIN_DASH, YAN_JIN_REST, YAN_JIN_SEAL, YAN_JIN_SLAM,
+  YAN_JIN_WARD } from './yanjin.ts'
 export { TEAM_COLORS, type Team } from './units.ts'
 
 export const DT = 1 / 60
@@ -157,6 +160,15 @@ export interface Fighter {
   tower: Tower | null
   elevation: number
   falling: boolean
+  knockup: number // seconds left in the air after Yan Jin's slam
+  yanCombo: number // long-sword slices landed since his last slam
+  yanSeal: { x: number; y: number; time: number } | null // Yan Jin's Gravity Seal while his sword is in the ground
+  yanSealCooldown: number
+  float: { owner: Fighter; drop: boolean } | null // lifted by a Gravity Seal; `drop` once the sword comes out
+  yanCat: YanCatastrophe | null
+  yanCatCooldown: number
+  yanWard: { phase: 'hold' | 'spin'; time: number } | null // Yang Ward: holding projectiles, then spinning them back
+  yanWardCooldown: number
   colony: { time: number; need: number; workers: number; counted: boolean; brood: number;
     level: number; recruits: number; exit: number; alarm: number; enemy: Fighter | null } | null
   antHome: Fighter | null
@@ -180,6 +192,8 @@ export interface Tower {
 }
 
 interface Tree { x: number; y: number; occupant: Fighter | null }
+// Yan Jin's Catastrophe: `time` into the current phase; (x, y) is where the long sword stands and the black hole opens.
+interface YanCatastrophe { phase: 'pierce' | 'leap' | 'charge' | 'slash' | 'hole'; time: number; x: number; y: number }
 interface NinjaAmbush {
   tree: Tree
   target: Fighter | null
@@ -211,7 +225,7 @@ interface Charge {
 }
 interface LightningShot { owner: Fighter; x: number; y: number; tx: number; ty: number; life: number; healing?: boolean }
 interface Storm { owner: Fighter; x: number; y: number; elevation: number; time: number; phase: 'warning' | 'impact' }
-interface Impact { x: number; y: number; radius: number; life: number; color?: string; inferno?: boolean; smoke?: boolean; fox?: boolean; claw?: number }
+interface Impact { x: number; y: number; radius: number; life: number; color?: string; inferno?: boolean; smoke?: boolean; fox?: boolean; claw?: number; talisman?: boolean }
 // A bomb talisman Mei stuck on the ground; it arms, then waits for an enemy to step on it.
 interface TalismanMine { owner: Fighter; x: number; y: number; life: number }
 interface KatanaSlash { x: number; y: number; angle: number; life: number; saint?: boolean }
@@ -247,7 +261,8 @@ function canMeditate(fighter: Fighter) {
 interface GiantSword { owner: Fighter; target: Fighter; x: number; y: number; fromX: number; fromY: number; time: number; flying: boolean }
 interface FishThrow { owner: Fighter; target: Fighter; fromX: number; fromY: number; time: number }
 // Swords: `comeback` ones return to the saint after striking, `ride` is the sword he rides during his blink.
-interface Shuriken { kind: 'shuriken' | 'spear' | 'sword' | 'talisman'; power?: number; fox?: boolean; hold?: number; target?: Fighter; seed?: number; comeback?: boolean; returning?: boolean; ride?: boolean; owner: Fighter; x: number; y: number; vx: number; vy: number; elevation: number; vz: number; life: number }
+// `caught`: frozen in that Yan Jin's Yang Ward until he spins and sends it back.
+interface Shuriken { kind: 'shuriken' | 'spear' | 'sword' | 'talisman'; caught?: Fighter; power?: number; fox?: boolean; hold?: number; target?: Fighter; seed?: number; comeback?: boolean; returning?: boolean; ride?: boolean; owner: Fighter; x: number; y: number; vx: number; vy: number; elevation: number; vz: number; life: number }
 interface Hammer {
   owner: Fighter
   x: number
@@ -315,10 +330,21 @@ function mantisGuard(fighter: Fighter) {
   return !!duel && fighter !== duel.captive && fighter !== duel.challenger
 }
 
+// Leaping, charging overhead or cleaving down, Yan Jin is out of reach.
+function yanAirborne(fighter: Fighter) {
+  const phase = fighter.yanCat?.phase
+  return phase === 'leap' || phase === 'charge' || phase === 'slash'
+}
+
+function shurikenSpeed(star: Shuriken) {
+  return star.kind === 'spear' ? SPARTAN_THROW.speed : star.kind === 'sword' ? SWORD_SAINT_SWORDS.speed
+    : star.kind === 'talisman' ? MEI_TALISMAN.speed : SHURIKEN_SPEED
+}
+
 function grounded(fighter: Fighter) {
   return fighter.stage !== 'egg' && !fighter.inside && !fighter.bat && !fighter.iceDive && !fighter.phoenixDive && !fighter.heldBy && !fighter.thrown && !fighter.tower
     && !(fighter.dragonDomain && fighter.dragonDomain.time < DOMAIN_CAST)
-    && fighter.elevation <= 0 && !fighter.hidden && !fighter.falling && fighter.charge?.phase !== 'flight'
+    && fighter.elevation <= 0 && !fighter.hidden && !fighter.falling && fighter.knockup <= 0 && !fighter.float && !yanAirborne(fighter) && fighter.charge?.phase !== 'flight'
 }
 
 function canFly(fighter: Fighter) {
@@ -445,6 +471,7 @@ export class Battle {
   fishThrows: FishThrow[] = []
   blinded: { target: Fighter; life: number }[] = []
   craters: { x: number; y: number; life: number }[] = []
+  yanBursts: { x: number; y: number; life: number }[] = []
   bolts: Bolt[] = []
   shots: LightningShot[] = []
   storms: Storm[] = []
@@ -757,7 +784,7 @@ export class Battle {
       lightningSword: null, lightningSwordCooldown: 0,
       song: 0, lure: null,
       waterPosition: null,
-      tower: null, elevation: 0, falling: false,
+      tower: null, elevation: 0, falling: false, knockup: 0, yanCombo: 0, yanSeal: null, yanSealCooldown: 1.5, float: null, yanCat: null, yanCatCooldown: YAN_JIN_CATASTROPHE.opening, yanWard: null, yanWardCooldown: 0,
       colony: species === 'anthill' ? { time: 0, need: this.nextColony[team], workers: 0, counted: false, brood: 0,
         level: 0, recruits: 0, exit: 0, alarm: 0, enemy: null } : null,
       antHome: null, antDeployed: false, antFlight: null, taunt: null,
@@ -882,6 +909,7 @@ export class Battle {
     this.fishThrows = []
     this.blinded = []
     this.craters = []
+    this.yanBursts = []
     this.bolts = []
     this.shots = []
     this.storms = []
@@ -1579,8 +1607,12 @@ export class Battle {
   private hit(target: Fighter, damage: number, kx = 0, ky = 0, owner?: Fighter, shock = 0, dodgeable = false) {
     if (target.hp <= 0 || target.stage === 'egg' || target.inside) return false
     if (target.saint && target.saint.phase !== 'melee') return false // the saint's backflips are immune
+    if (yanAirborne(target)) return false
     if (target.mei && target.mei.kind !== 'barrage') { // Mei's escape backflip is immune and his shield soaks every hit
-      if (target.mei.kind === 'shield' && damage > 0) target.mei.absorbed += damage
+      if (target.mei.kind === 'shield' && damage > 0) {
+        target.mei.absorbed += damage
+        this.impacts.push({ x: target.x, y: target.y - 20, radius: 20, life: 0.4, color: '#f2e6ff' })
+      }
       return false
     }
     if (owner && !mantisCanTarget(owner, target)) return false
@@ -3348,7 +3380,7 @@ export class Battle {
       if (tower.hp > 0 && tower.occupant && !allies(owner, tower.occupant)
         && Math.hypot(tower.x - x, tower.y - y) <= radius + 28) this.hitTower(tower, damage, owner)
     }
-    this.impacts.push({ x, y: y - elevation, radius, life: 0.4, color: MEI_TALISMAN.color })
+    this.impacts.push({ x, y: y - elevation, radius, life: MEI_TALISMAN.burst, talisman: true })
   }
 
   // Overwhelmed up close: backflip, drop a stun bomb, vanish at the top and reappear at throwing range.
@@ -3362,6 +3394,7 @@ export class Battle {
       x: fighter.x, y: fighter.y, target, absorbed: 0 }
     fighter.meiMelee = fighter.meiRanged = 0
     fighter.vx = fighter.vy = 0
+    if (kind === 'flip') this.impacts.push({ x: fighter.x, y: fighter.y, radius: 16, life: MEI_TALISMAN.burst, talisman: true })
     return true
   }
 
@@ -3432,6 +3465,7 @@ export class Battle {
     fighter.skillCooldown = E.cooldown
     fighter.cooldown = 0 // throw the moment he reappears
     this.impacts.push({ x: fighter.x, y: fighter.y, radius: 22, life: E.smoke, smoke: true })
+    this.impacts.push({ x: fighter.x, y: fighter.y, radius: 24, life: MEI_TALISMAN.burst, talisman: true })
     return true
   }
 
@@ -3442,7 +3476,7 @@ export class Battle {
       if (Math.hypot(victim.x - x, victim.y - y) > E.radius + fighterDef(victim).radius) continue
       if (this.hit(victim, MEI_YUANZHI.damage, 0, 0, owner) && victim.hp > 0 && !building(victim)) victim.stun = Math.max(victim.stun, E.stun)
     }
-    this.impacts.push({ x, y, radius: E.radius, life: 0.4, color: MEI_TALISMAN.color })
+    this.impacts.push({ x, y, radius: E.radius, life: MEI_TALISMAN.burst, talisman: true })
     this.impacts.push({ x, y, radius: E.radius * 0.8, life: E.smoke, smoke: true })
   }
 
@@ -3495,6 +3529,7 @@ export class Battle {
         && victim.hp > 0 && !building(victim)) victim.stun = Math.max(victim.stun, T.stun)
     }
     this.impacts.push({ x: owner.x, y: owner.y - 10, radius: T.radius, life: MEI_FOX.blast, fox: true })
+    this.impacts.push({ x: owner.x, y: owner.y - 10, radius: T.radius * 1.15, life: MEI_TALISMAN.burst, talisman: true })
     this.impacts.push({ x: owner.x, y: owner.y, radius: T.radius * 0.7, life: MEI_ESCAPE.smoke, smoke: true })
   }
 
@@ -3509,6 +3544,7 @@ export class Battle {
       spirit.facing = owner.facing
       if (enemy && targetable(spirit, enemy)) spirit.target = spirit.retaliation = enemy
       this.impacts.push({ x: spirit.x, y: spirit.y, radius: 20, life: MEI_ESCAPE.smoke, smoke: true })
+      this.impacts.push({ x: spirit.x, y: spirit.y, radius: 24, life: MEI_TALISMAN.burst, talisman: true })
     }
   }
 
@@ -3587,7 +3623,7 @@ export class Battle {
       if (tower.hp > 0 && tower.occupant && !allies(owner, tower.occupant)
         && Math.hypot(tower.x - mine.x, tower.y - mine.y) <= M.radius + 28) this.hitTower(tower, M.damage, owner)
     }
-    this.impacts.push({ x: mine.x, y: mine.y, radius: M.radius, life: 0.4, color: MEI_TALISMAN.color })
+    this.impacts.push({ x: mine.x, y: mine.y, radius: M.radius, life: MEI_TALISMAN.burst, talisman: true })
     this.impacts.push({ x: mine.x, y: mine.y, radius: M.radius * 0.7, life: MEI_ESCAPE.smoke, smoke: true })
   }
 
@@ -3727,9 +3763,11 @@ export class Battle {
   private stepHeroRest(fighter: Fighter) {
     const mei = fighter.species === 'meiyuanzhi'
     const thor = fighter.species === 'thor'
-    if ((fighter.species !== 'swordsaint' && !mei && !thor) || !canMeditate(fighter)) return false
+    const yan = fighter.species === 'yanjin'
+    if ((fighter.species !== 'swordsaint' && !mei && !thor && !yan) || !canMeditate(fighter)) return false
     const def = fighterDef(fighter)
-    if (fighter.hp < def.hp) {
+    // Once Yan Jin has driven his swords into the ground he keeps floating until an enemy shows up.
+    if (fighter.hp < def.hp || (yan && fighter.saintRest?.kind === 'meditate')) {
       if (fighter.saintRest?.kind !== 'meditate') {
         fighter.saintRest = { kind: 'meditate', x: fighter.x, y: fighter.y, action: 'wait', time: 0, catch: 0 }
       }
@@ -3746,12 +3784,13 @@ export class Battle {
           this.impacts.push({ x: fighter.x, y: fighter.y - fighter.elevation, radius: 42, life: 0.4, color: '#67cfff' })
         }
       } else {
-        fighter.hp = Math.min(def.hp, fighter.hp + (mei ? MEI_REST.heal : SWORD_SAINT_REST.heal) * DT)
+        if (yan) fighter.saintRest.time += DT // drives his sit, sword-strike and float animation
+        fighter.hp = Math.min(def.hp, fighter.hp + (mei ? MEI_REST.heal : yan ? YAN_JIN_REST.heal : SWORD_SAINT_REST.heal) * DT)
       }
       this.move(fighter, 0, 0)
       return true
     }
-    if (mei || thor) { fighter.saintRest = null; return false }
+    if (mei || thor || yan) { fighter.saintRest = null; return false }
     let spot = fighter.saintRest?.kind === 'fish' && this.water.inWater(fighter.saintRest.x, fighter.saintRest.y) ? fighter.saintRest : null
     if (!spot && (this.tick + fighter.id) % 30 === 0) spot = this.nearestWater(fighter.x, fighter.y)
     fighter.saintRest = spot
@@ -3870,6 +3909,10 @@ export class Battle {
   private stepShuriken() {
     for (let i = this.shuriken.length - 1; i >= 0; i--) {
       const star = this.shuriken[i], owner = star.owner
+      if (star.caught) {
+        if (star.caught.hp > 0 && star.caught.yanWard) continue // held still in the ward
+        star.caught = undefined // the ward broke: it flies on as before
+      }
       const spear = star.kind === 'spear', sword = star.kind === 'sword', talisman = star.kind === 'talisman'
       if (star.hold !== undefined && star.hold > 0) {
         // A hovering barrage talisman: on release, aim near its target (or his current one) and fly.
@@ -3883,7 +3926,7 @@ export class Battle {
         this.aimTalisman(star, target.x + Math.cos(angle) * spread, target.y + Math.sin(angle) * spread, target.elevation)
         continue
       }
-      const speed = spear ? SPARTAN_THROW.speed : sword ? SWORD_SAINT_SWORDS.speed : talisman ? MEI_TALISMAN.speed : SHURIKEN_SPEED
+      const speed = shurikenSpeed(star)
       const damage = spear ? SPARTAN_THROW.damage * (star.power ?? 1) : sword ? SWORD_SAINT.damage : NINJA.damage
       const knockback = spear ? SPARTAN_THROW.knockback * (star.power ?? 1) : sword ? SWORD_SAINT.knockback : NINJA.knockback
       if (star.returning) {
@@ -4310,6 +4353,280 @@ export class Battle {
     }
   }
 
+  // Three quick long-sword slices, then the greatsword slam that throws every grounded enemy nearby into the air.
+  private yanJinAttack(owner: Fighter, target: Fighter, nx: number, ny: number) {
+    const C = YAN_JIN_COMBO, S = YAN_JIN_SLAM
+    if (owner.yanCombo < C.slices) {
+      owner.yanCombo++
+      owner.cooldown = owner.yanCombo === C.slices ? C.windup : C.interval
+      owner.vx += nx * C.lunge
+      owner.vy += ny * C.lunge
+      if (grounded(target) && canReach(owner, target)) {
+        this.hit(target, YAN_JIN.damage, nx * YAN_JIN.knockback, ny * YAN_JIN.knockback, owner, 0, true)
+      }
+      return
+    }
+    owner.yanCombo = 0
+    owner.cooldown = C.recover
+    owner.slam = 1
+    const x = owner.x + owner.facing * S.reach, y = owner.y
+    for (const victim of this.fighters) {
+      if (victim.hp <= 0 || allies(owner, victim) || building(victim) || !grounded(victim)) continue
+      const dx = victim.x - x, dy = victim.y - y, distance = Math.hypot(dx, dy)
+      if (distance > S.radius + fighterDef(victim).radius) continue
+      const angle = distance > 0.001 ? Math.atan2(dy, dx) : victim.id * 2.39996
+      if (!this.hit(victim, S.damage, Math.cos(angle) * S.knockback, Math.sin(angle) * S.knockback, owner)) continue
+      if (victim.hp <= 0 || !grounded(victim)) continue
+      this.releaseGrab(victim) // a grabbing T-Rex or ram lets go mid-air
+      victim.knockup = S.air
+    }
+    this.impacts.push({ x, y, radius: S.radius, life: 0.4, color: '#221f33' }) // a ring of ink to match the yin smash
+    this.craters.push({ x, y, life: S.crater })
+  }
+
+  // Gravity Seal: an enemy close by makes him drive the long sword into the ground.
+  private tryYanSeal(fighter: Fighter, target: Fighter | null) {
+    if (!target || fighter.species !== 'yanjin' || fighter.zombie || fighter.yanSeal || fighter.yanSealCooldown > 0
+      || fighter.stun > 0 || fighter.fear > 0 || fighter.frozen > 0 || !grounded(fighter) || !grounded(target)) return false
+    if (Math.hypot(target.x - fighter.x, target.y - fighter.y) > YAN_JIN_SEAL.trigger) return false
+    fighter.yanSeal = { x: fighter.x, y: fighter.y, time: 0 }
+    fighter.yanCombo = 0
+    fighter.vx = fighter.vy = 0
+    if (Math.abs(target.x - fighter.x) > 2) fighter.facing = target.x > fighter.x ? 1 : -1
+    return true
+  }
+
+  // He holds the sword in the ground while every enemy in the seal floats; pulling it out (time up, or him
+  // being stunned, scared, moved or turned) ends the seal and drops them all.
+  private stepYanSeal(owner: Fighter) {
+    const S = YAN_JIN_SEAL, seal = owner.yanSeal!
+    if (owner.stun > 0 || owner.frozen > 0 || owner.fear > 0 || owner.lure || owner.heldBy || owner.thrown || owner.zombie) {
+      owner.yanSeal = null
+      owner.yanSealCooldown = S.cooldown
+      return false
+    }
+    seal.time += DT
+    owner.vx = owner.vy = 0
+    if (seal.time >= S.duration) {
+      owner.yanSeal = null
+      owner.yanSealCooldown = S.cooldown
+      owner.attack = 1 // yanks the sword free
+      return true
+    }
+    this.liftSealVictims(owner, seal)
+    return true
+  }
+
+  // Every grounded enemy standing in the seal floats up, out of control.
+  private liftSealVictims(owner: Fighter, seal: { x: number; y: number }) {
+    for (const victim of this.nearbyFighters(seal.x, seal.y, YAN_JIN_SEAL.radius + 32)) {
+      if (victim.hp <= 0 || victim.float || allies(owner, victim) || building(victim) || !grounded(victim)) continue
+      if (!inYanSeal(victim.x - seal.x, victim.y - seal.y)) continue
+      this.releaseGrab(victim)
+      victim.yanSeal = null // a lifted Yan Jin loses his own seal and Catastrophe
+      victim.yanCat = null
+      victim.saintRest = null
+      victim.float = { owner, drop: false }
+      this.rally(victim, owner)
+    }
+  }
+
+  // Yang Ward: an enemy projectile flying at him makes him press the long sword into the ground.
+  private tryYanWard(fighter: Fighter) {
+    const W = YAN_JIN_WARD
+    if (fighter.species !== 'yanjin' || fighter.zombie || fighter.yanWard || fighter.yanSeal || fighter.yanCat
+      || fighter.yanWardCooldown > 0 || fighter.stun > 0 || fighter.frozen > 0 || fighter.fear > 0 || !grounded(fighter)) return false
+    for (const star of this.shuriken) {
+      if (star.caught || (star.hold ?? 0) > 0 || star.returning || star.ride || allies(star.owner, fighter)) continue
+      const dx = fighter.x - star.x, dy = fighter.y - star.y, speed = Math.hypot(star.vx, star.vy)
+      if (speed < 1 || Math.hypot(dx, dy) > W.trigger) continue
+      if ((dx * star.vx + dy * star.vy) / speed <= 0) continue // flying away from him
+      if (Math.abs(dx * star.vy - dy * star.vx) / speed > W.radius) continue // will pass wide
+      fighter.yanWard = { phase: 'hold', time: 0 }
+      fighter.saintRest = null
+      fighter.vx = fighter.vy = 0
+      return true
+    }
+    return false
+  }
+
+  // Hold every enemy projectile that enters the dome, then spin and send them all back.
+  private stepYanWard(owner: Fighter) {
+    const W = YAN_JIN_WARD, ward = owner.yanWard!
+    if (owner.zombie || owner.stun > 0 || owner.frozen > 0 || owner.lure || owner.heldBy || owner.thrown) {
+      owner.yanWard = null // held projectiles fly on as before
+      owner.yanWardCooldown = W.cooldown
+      return false
+    }
+    ward.time += DT
+    owner.vx = owner.vy = 0
+    if (ward.phase === 'hold') {
+      for (const star of this.shuriken) {
+        if (star.caught || (star.hold ?? 0) > 0 || star.returning || star.ride || allies(star.owner, owner)) continue
+        if (Math.hypot(star.x - owner.x, star.y - owner.y) <= W.radius) star.caught = owner
+      }
+      if (ward.time >= W.hold) { ward.phase = 'spin'; ward.time = 0 }
+      return true
+    }
+    if (ward.time < W.spin) return true
+    owner.yanWard = null
+    owner.yanWardCooldown = W.cooldown
+    for (const star of this.shuriken) {
+      if (star.caught !== owner) continue
+      // Back at whoever threw it (or back the way it came), now his.
+      const thrower = star.owner, alive = thrower.hp > 0
+      star.caught = undefined
+      star.owner = owner
+      star.target = undefined
+      star.comeback = star.ride = false
+      const speed = shurikenSpeed(star) * W.boost
+      const dx = alive ? thrower.x - star.x : -star.vx, dy = alive ? thrower.y - star.y : -star.vy
+      const d = Math.hypot(dx, dy) || 1, time = alive ? d / speed : 1.2
+      star.vx = dx / d * speed
+      star.vy = dy / d * speed
+      star.vz = alive ? (thrower.elevation + 10 - star.elevation) / Math.max(0.1, time) : 0
+      // A talisman bursts where its life ends; a returned sword skips its aiming pause.
+      star.life = Math.min(time + (star.kind === 'talisman' ? 0 : 0.5), SWORD_SAINT_SWORDS.life - SWORD_SAINT_SWORDS.aim)
+    }
+    return true
+  }
+
+  // Catastrophe: a crowd close by makes him plant the long sword and open a seal under them.
+  private tryYanCatastrophe(fighter: Fighter, target: Fighter | null) {
+    const K = YAN_JIN_CATASTROPHE
+    if (!target || fighter.species !== 'yanjin' || fighter.zombie || fighter.yanCat || fighter.yanSeal || fighter.yanCatCooldown > 0
+      || fighter.stun > 0 || fighter.fear > 0 || fighter.frozen > 0 || !grounded(fighter) || !grounded(target)) return false
+    let crowd = 0
+    for (const other of this.nearbyFighters(fighter.x, fighter.y, K.trigger + 20)) {
+      if (targetable(fighter, other) && grounded(other) && !building(other)
+        && Math.hypot(other.x - fighter.x, other.y - fighter.y) <= K.trigger) crowd++
+    }
+    if (crowd < K.crowd) return false
+    fighter.yanCat = { phase: 'pierce', time: 0, x: fighter.x, y: fighter.y }
+    fighter.yanSeal = { x: fighter.x, y: fighter.y, time: 0 }
+    fighter.yanCombo = 0
+    fighter.vx = fighter.vy = 0
+    if (Math.abs(target.x - fighter.x) > 2) fighter.facing = target.x > fighter.x ? 1 : -1
+    return true
+  }
+
+  // Plant the sword (seal lifts enemies), backflip away and up, grow the black greatsword, cleave down through the
+  // floaters, hold while the black hole spins them in, then let it burst. Once started it cannot be stopped,
+  // short of him dying or turning.
+  private stepYanCatastrophe(owner: Fighter) {
+    const K = YAN_JIN_CATASTROPHE, cat = owner.yanCat!
+    if (owner.zombie) {
+      owner.yanCat = owner.yanSeal = null
+      owner.yanCatCooldown = K.cooldown
+      return false
+    }
+    cat.time += DT
+    owner.vx = owner.vy = 0
+    if (owner.yanSeal) {
+      owner.yanSeal.time = Math.min(1, owner.yanSeal.time + DT) // stays open until the cleave
+      this.liftSealVictims(owner, owner.yanSeal)
+    }
+    const backX = cat.x - owner.facing * K.back, landX = cat.x - owner.facing * K.land
+    if (cat.phase === 'pierce') {
+      if (cat.time >= K.pierce) { cat.phase = 'leap'; cat.time = 0 }
+    } else if (cat.phase === 'leap') {
+      owner.x = cat.x + (backX - cat.x) * Math.min(1, cat.time / K.leap)
+      if (cat.time >= K.leap) { cat.phase = 'charge'; cat.time = 0 }
+    } else if (cat.phase === 'charge') {
+      owner.x = backX
+      if (cat.time >= K.charge) { cat.phase = 'slash'; cat.time = 0 }
+    } else if (cat.phase === 'slash') {
+      owner.x = backX + (landX - backX) * Math.min(1, cat.time / K.slash) ** 2
+      if (cat.time >= K.slash) {
+        owner.yanSeal = null
+        cat.phase = 'hole'
+        cat.time = 0
+        for (const victim of this.fighters) {
+          if (victim.float?.owner === owner && victim.hp > 0) this.hit(victim, K.slashDamage, 0, 0, owner)
+        }
+        this.impacts.push({ x: cat.x, y: cat.y, radius: 70, life: 0.4, color: '#221f33' })
+        this.craters.push({ x: cat.x, y: cat.y, life: SWORD_SAINT_GIANT.crater })
+      }
+    } else if (cat.time >= K.hole) this.yanCatastropheBurst(owner, cat)
+    owner.y = cat.y
+    this.clamp(owner)
+    return true
+  }
+
+  // The black hole bursts: damage to every floater and nearby enemy, and everyone, him included, is thrown away.
+  private yanCatastropheBurst(owner: Fighter, cat: YanCatastrophe) {
+    const K = YAN_JIN_CATASTROPHE
+    owner.yanCat = null
+    owner.yanCatCooldown = K.cooldown
+    const fling = (fighter: Fighter, speed: number) => {
+      const dx = fighter.x - cat.x, dy = fighter.y - cat.y, d = Math.hypot(dx, dy)
+      const angle = d > 0.001 ? Math.atan2(dy, dx) : fighter.id * 2.39996
+      fighter.knockup = YAN_JIN_SLAM.air
+      fighter.vx = Math.cos(angle) * speed
+      fighter.vy = Math.sin(angle) * speed
+    }
+    for (const victim of this.fighters) {
+      if (victim === owner || victim.hp <= 0 || building(victim) || allies(owner, victim)) continue
+      const caught = victim.float?.owner === owner
+      if (!caught && (!grounded(victim) || Math.hypot(victim.x - cat.x, victim.y - cat.y) > K.radius + fighterDef(victim).radius)) continue
+      victim.float = null
+      this.hit(victim, K.damage, 0, 0, owner)
+      if (victim.hp > 0) fling(victim, K.throw)
+    }
+    fling(owner, K.selfThrow)
+    this.yanBursts.push({ x: cat.x, y: cat.y, life: K.burst })
+    // Plain impact rings assume a 0.4-second life; longer would give them a negative radius.
+    this.impacts.push({ x: cat.x, y: cat.y, radius: K.radius, life: 0.4, color: '#221f33' })
+    this.craters.push({ x: cat.x, y: cat.y, life: SWORD_SAINT_GIANT.crater })
+  }
+
+  // Lifted by a Gravity Seal: drifts up out of control, then slams down and is stunned once the sword comes out.
+  private stepFloat(fighter: Fighter) {
+    const S = YAN_JIN_SEAL, float = fighter.float!
+    const cat = float.owner.yanCat
+    if (!float.drop && (float.owner.hp <= 0 || (!float.owner.yanSeal && !cat))) float.drop = true
+    fighter.x += fighter.vx * DT
+    fighter.y += fighter.vy * DT
+    fighter.vx *= 0.9
+    fighter.vy *= 0.9
+    this.clamp(fighter)
+    if (!float.drop && cat?.phase === 'hole') {
+      // Spiralling in toward the black hole, faster and tighter as it grows.
+      const K = YAN_JIN_CATASTROPHE, p = cat.time / K.hole
+      const a = fighter.id * 2.4 + this.tick * (0.05 + p * 0.12), r = K.orbit * (1 - p * 0.6) * (1 + (fighter.id % 3) * 0.25)
+      fighter.x += (cat.x + Math.cos(a) * r - fighter.x) * 0.08
+      fighter.y += (cat.y + Math.sin(a) * r * 0.5 - fighter.y) * 0.08
+      fighter.elevation += (K.holeHeight + Math.sin(a) * 6 - fighter.elevation) * 0.08
+      this.clamp(fighter)
+      return
+    }
+    if (!float.drop) {
+      fighter.elevation += (S.height + Math.sin(this.tick * 0.06 + fighter.id) * 4 - fighter.elevation) * 0.06
+      return
+    }
+    fighter.elevation = Math.max(0, fighter.elevation - DT * S.drop)
+    if (fighter.elevation > 0) return
+    fighter.float = null
+    this.hit(fighter, S.damage, 0, 0, float.owner.hp > 0 ? float.owner : undefined)
+    fighter.stun = Math.max(fighter.stun, S.stun)
+    this.impacts.push({ x: fighter.x, y: fighter.y, radius: 22, life: 0.35, color: '#221f33' })
+  }
+
+  // Up and down along an arc, drifting with the slam's knockback, then a short stun on landing.
+  private stepKnockup(fighter: Fighter) {
+    const S = YAN_JIN_SLAM
+    fighter.knockup = Math.max(0, fighter.knockup - DT)
+    fighter.elevation = Math.sin((1 - fighter.knockup / S.air) * Math.PI) * S.height
+    fighter.x += fighter.vx * DT
+    fighter.y += fighter.vy * DT
+    fighter.vx *= 0.92
+    fighter.vy *= 0.92
+    this.clamp(fighter)
+    if (fighter.knockup > 0) return
+    fighter.elevation = 0
+    fighter.stun = Math.max(fighter.stun, S.stun)
+  }
+
   private groundSmash(owner: Fighter, radius: number, damage: number, knockback: number, color = '#3e9de8') {
     for (const target of this.fighters) {
       if (target.hp <= 0 || allies(owner, target) || !grounded(target)) continue
@@ -4580,6 +4897,8 @@ export class Battle {
     for (const bolt of this.bolts) bolt.life -= DT
     this.bolts = this.bolts.filter((bolt) => bolt.life > 0)
     this.stepMines()
+    for (const burst of this.yanBursts) burst.life -= DT
+    this.yanBursts = this.yanBursts.filter((burst) => burst.life > 0)
     for (const impact of this.impacts) impact.life -= DT
     this.impacts = this.impacts.filter((impact) => impact.life > 0)
     for (const slash of this.katanaSlashes) slash.life -= DT
@@ -4660,6 +4979,9 @@ export class Battle {
       fighter.meiBarrage = Math.max(0, fighter.meiBarrage - DT)
       fighter.meiMine = Math.max(0, fighter.meiMine - DT)
       fighter.meiStar = Math.max(0, fighter.meiStar - DT)
+      fighter.yanSealCooldown = Math.max(0, fighter.yanSealCooldown - DT)
+      fighter.yanCatCooldown = Math.max(0, fighter.yanCatCooldown - DT)
+      fighter.yanWardCooldown = Math.max(0, fighter.yanWardCooldown - DT)
       if (fighter.species === 'swordsaint' && !fighter.zombie && !fighter.saint) {
         fighter.swordStack = Math.min(SWORD_SAINT_SWORDS.max, fighter.swordStack + DT / SWORD_SAINT_SWORDS.summon)
       }
@@ -4695,6 +5017,8 @@ export class Battle {
         fighter.vx = fighter.vy = 0
         continue
       }
+      if (fighter.knockup > 0) { this.stepKnockup(fighter); continue }
+      if (fighter.float) { this.stepFloat(fighter); continue }
       if (this.stepMantisMoonSlash(fighter)) continue
       if (this.stepMantisLeap(fighter)) continue
       if (this.stepMantisDodge(fighter)) continue
@@ -4755,6 +5079,10 @@ export class Battle {
       if (fighter.ambush && this.stepNinjaAmbush(fighter)) continue
       if (fighter.dash && this.stepNinjaDash(fighter)) continue
       if (fighter.saint && this.stepSaint(fighter)) continue
+      if (fighter.yanCat && this.stepYanCatastrophe(fighter)) continue
+      if (fighter.yanSeal && this.stepYanSeal(fighter)) continue
+      if (fighter.yanWard && this.stepYanWard(fighter)) continue
+      if (this.tryYanWard(fighter)) continue
       if (this.tryMeiTransform(fighter)) continue
       if (fighter.mei && this.stepMei(fighter)) continue
       const domainOwner = this.domainTarget(fighter)
@@ -4800,6 +5128,8 @@ export class Battle {
         && fighter.spartanMark && targetable(fighter, fighter.spartanMark)) fighter.target = target = fighter.spartanMark
       if (this.trySpartanThrow(fighter, target)) continue
       if (this.trySaintFlip(fighter, target)) continue
+      if (this.tryYanCatastrophe(fighter, target)) continue
+      if (this.tryYanSeal(fighter, target)) continue
       if (this.tryMeiSkill(fighter, target)) continue
       if (this.stepSpartanFormation(fighter, domainOwner !== null)) continue
       if (!domainOwner && fighter.species === 'ant-tank' && fighter.antHome && target
@@ -4871,6 +5201,11 @@ export class Battle {
           if (!fighter.zombie && fighter.species === 'rex' && fighter.cooldown <= 0 && d <= TREX_ROAR.radius && this.tryRexRoar(fighter)) continue
           if (!fighter.hammerOut) {
             if (d > def.radius + fighterDef(target).radius + def.range) {
+              if (!fighter.zombie && fighter.species === 'yanjin' && fighter.skillCooldown <= 0 && d < YAN_JIN_DASH.range && grounded(target)) {
+                fighter.vx = nx * YAN_JIN_DASH.speed
+                fighter.vy = ny * YAN_JIN_DASH.speed
+                fighter.skillCooldown = YAN_JIN_DASH.cooldown
+              }
               if (!fighter.zombie && fighter.species === 'goose' && d <= GOOSE_SWOOP.range && fighter.cooldown <= 0
                 && fighter.skillCooldown <= 0 && grounded(target)) {
                 fighter.cooldown = def.cooldown
@@ -4899,6 +5234,7 @@ export class Battle {
               else if (fighter.species === 'siren') this.sing(fighter)
               else if (fighter.species === 'ninja') this.ninjaAttack(fighter, target, nx, ny)
               else if (fighter.species === 'swordsaint') this.launchSwords(fighter, target, nx, ny)
+              else if (fighter.species === 'yanjin') this.yanJinAttack(fighter, target, nx, ny)
               else if (fighter.species === 'meiyuanzhi') {
                 if (this.tryMeiStar(fighter, target)) continue
                 if (fighter.meiForm > 0 && d <= def.radius + fighterDef(target).radius + MEI_CLAW.reach) {
@@ -4928,6 +5264,7 @@ export class Battle {
           }
         }
       } else if (!target && fighter.stun <= 0 && !fighter.hammerOut) {
+        fighter.yanCombo = 0 // no one left to slam: lower the greatsword
         if (this.stepHeroRest(fighter)) continue
         // Original wandering: 1.5-second headings, every third leg a rest, at 40% speed.
         const leg = Math.floor((this.tick + fighter.id * 37) / 90)
@@ -5121,6 +5458,19 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     drawDragonDomain(c, domain.x, domain.y, domain.radius, battle.tick / 60, domain.sealed, DOMAIN_END - domain.time)
   }
   for (const crater of battle.craters) drawCrater(c, crater.x, crater.y, crater.life / SWORD_SAINT_GIANT.crater)
+  for (const fighter of battle.fighters) {
+    if (fighter.yanSeal && fighter.hp > 0) drawYanSeal(c, fighter.yanSeal.x, fighter.yanSeal.y, fighter.yanSeal.time, battle.tick)
+    const cat = fighter.yanCat
+    if (cat && cat.phase !== 'pierce') drawYanPlantedSword(c, cat.x, cat.y, UNITS.yanjin.size)
+    if (cat?.phase === 'hole') drawYanBlackHole(c, cat.x, cat.y, cat.time / YAN_JIN_CATASTROPHE.hole, battle.tick)
+  }
+  for (const burst of battle.yanBursts) drawYanBurst(c, burst.x, burst.y, 1 - burst.life / YAN_JIN_CATASTROPHE.burst)
+  for (const fighter of battle.fighters) {
+    const ward = fighter.yanWard
+    if (ward && fighter.hp > 0) drawYanWard(c, fighter.x, fighter.y + fighterDef(fighter).radius,
+      ward.phase === 'hold' ? ward.time : 1, ward.phase === 'spin' ? ward.time / YAN_JIN_WARD.spin : null, battle.tick)
+  }
+  for (const star of battle.shuriken) if (star.caught) drawYanHeld(c, star.x, star.y - star.elevation - 10, battle.tick)
   for (const splat of battle.splats) {
     const delivery = splat.haul?.entry ?? 0
     if (splat.haul) {
@@ -5240,6 +5590,10 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
   for (const impact of battle.impacts) {
     if (impact.inferno) {
       drawDragonDomainCollapse(c, impact.x, impact.y, impact.radius, Math.max(0, 1 - impact.life / 0.8))
+      continue
+    }
+    if (impact.talisman) {
+      drawTalismanBurst(c, impact.x, impact.y, impact.radius, 1 - impact.life / MEI_TALISMAN.burst, battle.tick)
       continue
     }
     if (impact.claw) {
@@ -5370,6 +5724,13 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     const meditating = rest?.kind === 'meditate'
     const meiFox = poses.mei && fighter.meiForm > 0 && !fighter.zombie ? poses.mei.fox : undefined, meiPoses = meiFox ?? poses.mei
     const thorMeditating = isThor && meditating
+    const yanLift = poses.yan && meditating ? yanFloat(rest!.time, battle.tick) : 0
+    // Catastrophe: his height while leaping, hovering and cleaving down, and his backflip progress.
+    const yanCat = poses.yan && !fighter.zombie ? fighter.yanCat : null, CAT = YAN_JIN_CATASTROPHE
+    const yanCatAlt = yanCat?.phase === 'leap' ? CAT.height * Math.sin(Math.min(1, yanCat.time / CAT.leap) * Math.PI / 2)
+      : yanCat?.phase === 'charge' ? CAT.height + Math.sin(battle.tick * 0.1) * 2
+      : yanCat?.phase === 'slash' ? CAT.height * (1 - Math.min(1, yanCat.time / CAT.slash) ** 2) : 0
+    const yanFlip = yanCat?.phase === 'leap' ? Math.min(1, yanCat.time / CAT.leap) : null
     const fishing = rest?.kind === 'fish' && Math.hypot(rest.x - fighter.x, rest.y - fighter.y) < 12
     const countering = fighter.species === 'swordsaint' && !fighter.zombie && !fighter.saint && fighter.casting > 0
     const evolvedRex = fighter.rexKills >= TREX_BLACK.kills ? poses.rexBlack
@@ -5404,9 +5765,10 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     const meiRise = transform === null ? 0 : transform < T.rise ? Math.sin(transform / T.rise * Math.PI / 2)
       : Math.min(1, Math.max(0, 1 - (transform - T.rise - T.hover) / T.slam))
     const meiFlip = fighter.mei?.kind === 'flip' ? Math.min(1, (MEI_ESCAPE.flip + MEI_ESCAPE.vanish - fighter.mei.time) / MEI_ESCAPE.flip) : null
-    const backflipping = fighter.ambush?.phase === 'return' || saintFlip !== null || meiFlip !== null
+    const backflipping = fighter.ambush?.phase === 'return' || saintFlip !== null || meiFlip !== null || yanFlip !== null
     const flipProgress = saintFlip ? 1 - Math.max(0, saintFlip.time) / (saintFlip.phase === 'flip' ? SWORD_SAINT_MELEE.flip : SWORD_SAINT_MELEE.mount)
       : meiFlip !== null ? meiFlip * 0.5
+      : yanFlip !== null ? yanFlip
       : backflipping ? 1 - fighter.ambush!.time / NINJA_AMBUSH.returnTime : 0
     const hovering = fighter.bat || (!fighter.tower && !fighter.tree && !fighter.falling && fighter.elevation > 0)
     const antFlapping = fighter.species === 'ant-fly' && !fighter.inside && !fighter.heldBy && !fighter.thrown
@@ -5424,6 +5786,7 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       + (saintFlip ? Math.sin(flipProgress * Math.PI) * SWORD_SAINT_MELEE.flipHeight : 0)
       + (meiFlip !== null ? Math.sin(meiFlip * Math.PI / 2) * MEI_ESCAPE.height : 0)
       + meiRise * T.height
+      + yanLift + yanCatAlt
       + (swordRider ? SWORD_SAINT_SWORDS.hover + Math.sin(battle.tick * 0.08 + fighter.id) * 2.5 : 0)
     const bob = Math.abs(Math.sin(fighter.phase)) * (fighter.zombie ? 3.5 : isThor ? 1.5 : 2.5) * moving
     const attackLean = fighter.mantisLeap ? 0.22 : fighter.mantisDodge ? -0.18
@@ -5446,6 +5809,7 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
           : breath ? -0.06 + Math.sin(battle.tick * 0.7 + fighter.id) * 0.025 : fighter.cavalryMounted ? 0 : fighter.attack * 0.45
     const rotation = (Math.sin(fighter.phase) * (fighter.zombie ? 0.16 : isThor ? 0.06 : 0.1) * moving
       + (fighter.zombie ? 0.09 + fighter.attack * 0.22 : attackLean)) * fighter.facing
+      + (fighter.float && !fighter.float.drop ? Math.sin(battle.tick * 0.05 + fighter.id * 1.7) * 0.6 : 0) // tumbling helplessly
     const sink = (grounded(fighter) && !swordRider) || fighter.stage === 'egg' ? sinkAt(fighter.x, fighter.y) / def.size : 0
     const trail = fighter.saint?.trail
     const bombFall = meiFlip !== null ? meiFlip * MEI_ESCAPE.flip / MEI_ESCAPE.bomb : 1
@@ -5459,6 +5823,10 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       c.fill()
       c.restore()
     }
+    if (meiFlip !== null) drawMeiFlipStreak(c, fighter.x, fighter.y + def.radius - altitude, meiFlip, fighter.facing)
+    if (transform !== null) drawMeiTransform(c, fighter.x, fighter.y + def.radius - altitude, fighter.y + def.radius, battle.tick, meiRise)
+    if (fighter.mei?.kind === 'barrage') drawMeiConjure(c, fighter.x, fighter.y + def.radius, battle.tick, 1 - fighter.mei.time / (MEI_BARRAGE.count * MEI_BARRAGE.interval))
+    if (meiFox) drawFoxAura(c, fighter.x, fighter.y + def.radius, battle.tick, fighter.id)
     if (fighter.ambush?.phase === 'slash') {
       c.save()
       c.strokeStyle = '#96cfc3'
@@ -5553,12 +5921,17 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       c.rotate(-flipProgress * Math.PI * 2 * fighter.facing)
       c.translate(0, 24 * def.size)
     }
-    c.scale(fighter.facing * def.size * (1 + fighter.hit * 0.22), def.size * (1 + fighter.hit * 0.22))
+    // Spinning to throw projectiles back, Yan Jin turns twice on the spot.
+    const yanSpin = poses.yan && fighter.yanWard?.phase === 'spin' ? Math.cos(fighter.yanWard.time / YAN_JIN_WARD.spin * Math.PI * 4) : 1
+    c.scale(fighter.facing * def.size * (1 + fighter.hit * 0.22) * yanSpin, def.size * (1 + fighter.hit * 0.22))
     if (fighter.dragonSleeping) c.scale(1, 1 + Math.sin(battle.tick * 0.035 + fighter.id) * 0.025)
     if (fighter.inside) {
       c.globalAlpha = 1 - fighter.entry
       c.scale(1 - fighter.entry, 1 - fighter.entry)
     }
+    // Yan Jin lifts the greatsword once his third slice has landed, and streaks while dashing.
+    const yanRaising = fighter.yanCombo >= YAN_JIN_COMBO.slices && fighter.attack < 0.5 && fighter.slam <= 0
+    const yanDash = poses.yan ? Math.min(1, Math.max(0, (Math.hypot(fighter.vx, fighter.vy) - def.speed * 1.4) / 200)) : 0
     const picked = fighter.zombie ? mantis?.zombie ?? knife?.zombie ?? evolvedRex?.zombie ?? dragon?.zombie ?? phoenix?.zombie ?? (fighter.stage === 'chick' ? poses.zombie.chick! : poses.zombie.ready)
       : evolvedRex ? evolvedRex.ready
       : dragon && fighter.dragonSleeping ? dragon.sleeping
@@ -5584,6 +5957,14 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
         : activeSpartanSlot(fighter) ? knife?.guard ?? spartanPoses.guard : knife?.ready ?? commanderPoses?.ready ?? poses.ready
       : poses.saint && fighter.saint && fighter.saint.phase !== 'mount' ? fighter.attack > 0 ? poses.saint.slash : poses.saint.stand
       : poses.saint && meditating ? poses.saint.meditate : poses.saint && (fishing || countering) ? poses.saint.fish
+      : poses.yan && yanCat ? yanCat.phase === 'pierce' ? poses.yan.pierce : yanCat.phase === 'hole' ? poses.yan.slam
+        : yanCat.phase === 'slash' ? poses.yan.cleave : poses.yan.charge
+      : poses.yan && fighter.yanSeal ? poses.yan.pierce
+      : poses.yan && fighter.yanWard?.phase === 'hold' ? poses.yan.pierce
+      : poses.yan && meditating ? poses.yan.meditate
+      : poses.yan && fighter.slam > 0 ? poses.yan.slam
+      : poses.yan && yanRaising ? poses.yan.raise
+      : poses.yan && fighter.attack > 0 ? poses.yan.slice
       : meiPoses && meditating ? meiPoses.meditate
       : meiPoses && fighter.attack > 0 ? fighter.meiHand ? meiPoses.throwBack : meiPoses.throwFront
       : meiFox ? meiFox.ready
@@ -5607,7 +5988,10 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     if (fighter.hidden) c.globalAlpha = 0.24
     else if (fighter.mantisCloak > 0) c.globalAlpha = 0.12
     if (transform !== null) drawMeditationAura(c, battle.tick, MEI_AURA)
-    if (meditating) drawMeditationAura(c, battle.tick, thorMeditating ? ['#3e9de8', '#b5eaff'] : poses.mei ? MEI_AURA : undefined)
+    if (yanCat?.phase === 'charge') drawYanColossus(c, 'charge', yanCat.time / CAT.charge, battle.tick)
+    if (meditating && poses.yan) drawYanMeditation(c, rest!.time, battle.tick, yanLift / def.size, true)
+    else if (meditating) drawMeditationAura(c, battle.tick, thorMeditating ? ['#3e9de8', '#b5eaff'] : poses.mei ? MEI_AURA : undefined)
+    if (meditating && poses.mei && !fighter.zombie) drawMeiMeditate(c, battle.tick, fighter.id)
     if (saintFan) drawSwordFan(c, Math.floor(fighter.swordStack), battle.tick, fighter.id, false, saintJab)
     if (bloodlust || callingHelp) {
       drawRexBloodlust(c, battle.tick, fighter.id,
@@ -5617,6 +6001,9 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     if (meiFox) drawFoxTails(c, battle.tick, fighter.id, -9, -13, 34, moving)
     else if (fighter.species === 'mei-fox') drawFoxTails(c, battle.tick, fighter.id, -10, -15, 19, moving)
     c.drawImage(body ?? sprite, -24, -44, 48, 48)
+    if (meditating && poses.yan) drawYanMeditation(c, rest!.time, battle.tick, yanLift / def.size, false)
+    if (yanCat?.phase === 'slash') drawYanColossus(c, 'slash', yanCat.time / CAT.slash, battle.tick)
+    else if (yanCat?.phase === 'hole') drawYanColossus(c, 'hole', yanCat.time / CAT.hole, battle.tick)
     if (fighter.mei?.kind === 'shield') drawMeiShield(c, battle.tick, Math.min(1, fighter.mei.absorbed / 100))
     if (saintFan) drawSwordFan(c, Math.floor(fighter.swordStack), battle.tick, fighter.id, true, saintJab)
     if (fishing) {
@@ -5792,6 +6179,9 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       else drawFireBreath(c, 0, 0, angle, reach, 13 + fighter.dragonForm * 1.5, time, power, breath.element)
       c.restore()
     }
+    if (poses.yan && fighter.slam > 0) drawYanSmash(c, 1 - fighter.slam)
+    else if (poses.yan && fighter.attack > 0 && !yanRaising) drawYanSwing(c, 1 - fighter.attack, fighter.yanCombo)
+    if (poses.yan && yanDash > 0) drawYanDash(c, yanDash)
     if (poses.ninja && dashing) {
       const progress = fighter.dash ? 1 - fighter.dash.time / NINJA_DASH.duration
         : 1 - fighter.ambush!.time / NINJA_AMBUSH.blinkTime
@@ -6105,8 +6495,12 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       const swing = ((aim - upright + Math.PI * 3) % (Math.PI * 2)) - Math.PI
       drawFlyingSword(c, star.x, star.y - star.elevation, upright + swing * turn, battle.tick + star.owner.id * 13, turn, star.ride ? 28 : 16)
     }
-    else if (star.kind === 'talisman' && star.fox) drawFoxTalisman(c, star.x, star.y - star.elevation, battle.tick + star.owner.id)
-    else if (star.kind === 'talisman') drawTalisman(c, star.x, star.y - star.elevation, Math.sin(battle.tick * 0.3 + star.owner.id) * 0.5, 1 + Math.min(3, (star.power ?? 0) / 40))
+    else if (star.kind === 'talisman' && star.fox) drawFoxShot(c, star.x, star.y - star.elevation, Math.atan2(star.vy, star.vx), battle.tick + star.owner.id)
+    else if (star.kind === 'talisman') {
+      const tick = battle.tick + star.owner.id
+      if (star.hold !== undefined && star.hold > 0) drawTalismanHover(c, star.x, star.y - star.elevation, tick)
+      else drawTalismanShot(c, star.x, star.y - star.elevation, Math.atan2(star.vy, star.vx), tick, star.power ?? 0)
+    }
     else if (star.kind === 'spear') drawSpartanSpear(c, star.x, star.y - star.elevation, Math.atan2(star.vy, star.vx), (star.power ?? 1) > 1)
     else drawShuriken(c, star.x, star.y - star.elevation, battle.tick * 0.7 + star.owner.id)
   }

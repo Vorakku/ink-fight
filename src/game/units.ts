@@ -12,6 +12,7 @@ import { buildMantisSprite, buildMantisShedSprite, MANTIS, type MantisForm } fro
 import { buildZombieSprite, buildZombieVariant, ZOMBIE } from './zombie.ts'
 import { buildVampireSprite, VAMPIRE } from './vampire.ts'
 import { buildSwordSaintSprite, SWORD_SAINT } from './swordsaint.ts'
+import { buildYanJinSprite, YAN_JIN } from './yanjin.ts'
 import { buildFoxSpiritSprite, buildMeiSprite, MEI_SPIRIT, MEI_YUANZHI } from './meiyuanzhi.ts'
 import { ANT, ANTHILL, ANT_QUEEN, ANT_TANK, ANT_SLASHER, ANT_FLY, buildAntSprite, buildAnthillSprite, buildAntQueenSprite, buildAntTankSprite, buildAntSlasherSprite, buildAntFlySprite } from './ant.ts'
 
@@ -34,6 +35,7 @@ export const UNITS = {
   swordsaint: { ...SWORD_SAINT, scare: 0, buildSprite: buildSwordSaintSprite },
   meiyuanzhi: { ...MEI_YUANZHI, scare: 0, buildSprite: buildMeiSprite },
   'mei-fox': { ...MEI_SPIRIT, buildSprite: buildFoxSpiritSprite },
+  yanjin: { ...YAN_JIN, scare: 0, buildSprite: buildYanJinSprite },
   ant: { ...ANT, scare: 0, buildSprite: buildAntSprite },
   anthill: { ...ANTHILL, scare: 0, buildSprite: buildAnthillSprite },
   'ant-queen': { ...ANT_QUEEN, scare: 0, buildSprite: buildAntQueenSprite },
@@ -44,14 +46,14 @@ export const UNITS = {
   'dragon-egg': { ...DRAGON_EGG, scare: 0, buildSprite: buildDragonEggSprite },
 } as const
 export type Species = keyof typeof UNITS
-export const CHARACTERS = ['goose', 'thor', 'rex', 'phoenix', 'dragon', 'siren', 'ninja', 'zombie', 'vampire', 'ant', 'spartan', 'mantis', 'swordsaint', 'meiyuanzhi', 'cavalry'] as const
+export const CHARACTERS = ['goose', 'thor', 'rex', 'phoenix', 'dragon', 'siren', 'ninja', 'zombie', 'vampire', 'ant', 'spartan', 'mantis', 'swordsaint', 'meiyuanzhi', 'cavalry', 'yanjin'] as const
 export const CATEGORIES = ['Food', 'Animals', 'Prehistoric', 'People', 'Mythical', 'Water', 'Bug', 'Hero', 'Miscellaneous'] as const
 export type Category = (typeof CATEGORIES)[number]
 export const CHARACTER_CATEGORIES: Record<(typeof CHARACTERS)[number], Category> = {
   goose: 'Animals', rex: 'Prehistoric', ninja: 'People', phoenix: 'Mythical', dragon: 'Mythical',
   siren: 'Water', ant: 'Bug', thor: 'Hero', zombie: 'Miscellaneous', vampire: 'Miscellaneous',
   spartan: 'People', cavalry: 'People',
-  mantis: 'Bug', swordsaint: 'Hero', meiyuanzhi: 'Hero',
+  mantis: 'Bug', swordsaint: 'Hero', meiyuanzhi: 'Hero', yanjin: 'Hero',
 }
 export const SPECIES: Species[] = [...CHARACTERS, 'anthill', 'ant-queen', 'ant-tank', 'ant-slasher', 'ant-fly', 'dragon-nest', 'dragon-egg', 'rex-egg', 'mei-fox']
 
@@ -70,6 +72,7 @@ type Poses = {
   }[]
   zombie: { ready: HTMLCanvasElement; shocked: HTMLCanvasElement; chick?: HTMLCanvasElement; shockedChick?: HTMLCanvasElement }
   ninja?: { poke: HTMLCanvasElement; slash: HTMLCanvasElement }
+  yan?: { slice: HTMLCanvasElement; raise: HTMLCanvasElement; slam: HTMLCanvasElement; meditate: HTMLCanvasElement; pierce: HTMLCanvasElement; charge: HTMLCanvasElement; cleave: HTMLCanvasElement }
   saint?: { stand: HTMLCanvasElement; slash: HTMLCanvasElement; meditate: HTMLCanvasElement; fish: HTMLCanvasElement }
   mei?: { meditate: HTMLCanvasElement; throwFront: HTMLCanvasElement; throwBack: HTMLCanvasElement
     fox: { ready: HTMLCanvasElement; meditate: HTMLCanvasElement; throwFront: HTMLCanvasElement; throwBack: HTMLCanvasElement; shocked: HTMLCanvasElement } }
@@ -140,6 +143,7 @@ const WALKERS: Partial<Record<Species, (color: Color, step: number) => HTMLCanva
   vampire: (color, step) => buildVampireSprite(color, undefined, step),
   spartan: (color, step) => buildSpartanSprite(color, 'ready', 'spear', false, step),
   meiyuanzhi: (color, step) => buildMeiSprite(color, 'ready', step),
+  yanjin: (color, step) => buildYanJinSprite(color, 'ready', step),
   ant: buildAntSprite,
   'ant-queen': buildAntQueenSprite,
   'ant-tank': buildAntTankSprite,
@@ -169,8 +173,8 @@ export function buildSprites(): Sprites {
       const color = team === 'ffa' ? undefined : TEAM_COLORS[team]
       const ready = UNITS[species].buildSprite(color)
       const empty = species === 'thor' ? buildThorSprite(color, 'empty') : ready
-      const headX = species === 'mei-fox' ? 37 : species === 'cavalry' ? 22 : species === 'ant' || species.startsWith('ant-') ? 35 : species === 'mantis' ? 30 : species === 'spartan' ? 29 : species === 'vampire' ? 28 : species === 'ninja' || species === 'zombie' ? 24 : species === 'thor' || species === 'swordsaint' || species === 'meiyuanzhi' ? 25 : species === 'siren' ? 26 : species === 'rex' ? 32 : 34
-      const headY = species === 'mei-fox' ? 23 : species === 'cavalry' ? 6 : species === 'ant' || species.startsWith('ant-') ? 26 : species === 'zombie' || species === 'spartan' || species === 'mantis' ? 14 : species === 'thor' || species === 'swordsaint' || species === 'meiyuanzhi' || species === 'siren' ? 13 : species === 'rex' || species === 'dragon' ? 11 : species === 'phoenix' || species === 'ninja' || species === 'vampire' ? 15 : 12
+      const headX = species === 'mei-fox' ? 37 : species === 'cavalry' ? 22 : species === 'ant' || species.startsWith('ant-') ? 35 : species === 'mantis' ? 30 : species === 'spartan' ? 29 : species === 'vampire' ? 28 : species === 'ninja' || species === 'zombie' ? 24 : species === 'thor' || species === 'swordsaint' || species === 'meiyuanzhi' || species === 'yanjin' ? 25 : species === 'siren' ? 26 : species === 'rex' ? 32 : 34
+      const headY = species === 'mei-fox' ? 23 : species === 'cavalry' ? 6 : species === 'ant' || species.startsWith('ant-') ? 26 : species === 'zombie' || species === 'spartan' || species === 'mantis' ? 14 : species === 'thor' || species === 'swordsaint' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'siren' ? 13 : species === 'rex' || species === 'dragon' ? 11 : species === 'phoenix' || species === 'ninja' || species === 'vampire' ? 15 : 12
       const shocked = buildShockedSprite(ready, headX, headY)
       const undead = species === 'zombie' ? ready : buildZombieVariant(empty)
       const undeadChick = species === 'phoenix' ? buildZombieVariant(buildPhoenixSprite(color, 'chick')) : undefined
@@ -211,6 +215,9 @@ export function buildSprites(): Sprites {
           return stand
         })(), slash: buildSwordSaintSprite(color, 'slash'),
           meditate: buildSwordSaintSprite(color, 'meditate'), fish: buildSwordSaintSprite(color, 'fish') } : undefined,
+        yan: species === 'yanjin' ? { slice: buildYanJinSprite(color, 'slice'), raise: buildYanJinSprite(color, 'raise'),
+          slam: buildYanJinSprite(color, 'slam'), meditate: buildYanJinSprite(color, 'meditate'), pierce: buildYanJinSprite(color, 'pierce'),
+          charge: buildYanJinSprite(color, 'charge'), cleave: buildYanJinSprite(color, 'cleave') } : undefined,
         mei: species === 'meiyuanzhi' ? { meditate: buildMeiSprite(color, 'meditate'),
           throwFront: buildMeiSprite(color, 'throwFront'), throwBack: buildMeiSprite(color, 'throwBack'),
           fox: (() => {
