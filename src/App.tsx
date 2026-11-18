@@ -14,7 +14,7 @@ type BattleState = 'running' | 'paused'
 type TerrainBrush = 'water' | 'tower' | 'tree'
 type Brush = Species | TerrainBrush
 const CHARACTER_TABS = CATEGORIES.filter((category) => CHARACTERS.some((species) => CHARACTER_CATEGORIES[species] === category))
-const EMPTY_COUNTS = { red: 0, blue: 0, ffa: 0, goose: 0, thor: 0, rex: 0, phoenix: 0, dragon: 0, siren: 0, ninja: 0, spartan: 0, cavalry: 0, mantis: 0, zombie: 0, vampire: 0, swordsaint: 0, meiyuanzhi: 0, yanjin: 0, mengchuan: 0, ant: 0, anthill: 0, 'ant-queen': 0, 'ant-tank': 0, 'ant-slasher': 0, 'ant-fly': 0, 'dragon-nest': 0, 'dragon-egg': 0, 'rex-egg': 0, 'mei-fox': 0, 'meng-devil': 0 }
+const EMPTY_COUNTS = { red: 0, blue: 0, ffa: 0, goose: 0, thor: 0, rex: 0, phoenix: 0, dragon: 0, siren: 0, ninja: 0, spartan: 0, cavalry: 0, mantis: 0, zombie: 0, vampire: 0, swordsaint: 0, kunlun: 0, meiyuanzhi: 0, yanjin: 0, mengchuan: 0, ant: 0, anthill: 0, 'ant-queen': 0, 'ant-tank': 0, 'ant-slasher': 0, 'ant-fly': 0, 'dragon-nest': 0, 'dragon-egg': 0, 'rex-egg': 0, 'mei-fox': 0, 'meng-devil': 0 }
 
 export default function App() {
   const [team, setTeam] = useState<Team>('ffa')

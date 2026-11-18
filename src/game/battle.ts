@@ -26,6 +26,7 @@ import { drawYanBlackHole, drawYanBurst, drawYanCleave, drawYanColossus, drawYan
   YAN_JIN_WARD, YAN_DEMON, YAN_DEMON_BLINK, YAN_DEMON_RAM, YAN_DEMON_RUIN, drawYanRamShield,
   YAN_JIN_TEMPEST, YAN_DEMON_GATHER, drawYanCrescent, drawYanBlood, drawYanDemonAura, drawYanDemonBlade, drawYanRoar, drawYanRuinCracks,
   drawYanRuinEruption, drawYanTrail, drawYanInk } from './yanjin.ts'
+import { drawKunlunSwing } from './kunlun.ts'
 import { drawMengBind, drawMengBreeze, drawMengConfused, drawMengDissolve, drawMengParry, drawMengSlashes, drawMengTitle, ease, MENG_BREEZE, MENG_CLONE,
   MENG_PARRY, MENG_REST, MENG_DEVILS, drawMengDevils, drawMengDevil, drawMengRitual, MENG_RITUAL, MENG_RITUAL_TIME,
   MENG_THUNDER, MENG_THUNDER_FORM, drawMengThunderMoon, MENG_STEP, drawMengStep, drawMengStrike, drawMengSwing,
@@ -6637,7 +6638,7 @@ export class Battle {
               else if (fighter.species === 'spartan') this.spartanAttack(fighter, target, nx, ny)
               else if (fighter.species === 'mengchuan' && fighter.mengThunder) this.mengThunderSlash(fighter, nx, ny)
               else if (fighter.species === 'mengchuan' && fighter.mengBody) this.mengBodyPunch(fighter, target, nx, ny)
-              else if (fighter.species === 'cavalry' || fighter.species === 'mengchuan' || fighter.species === 'meng-devil') {
+              else if (fighter.species === 'cavalry' || fighter.species === 'mengchuan' || fighter.species === 'meng-devil' || fighter.species === 'kunlun') {
                 if (grounded(target) && canReach(fighter, target)) this.hit(target, def.damage, nx * def.knockback, ny * def.knockback, fighter, 0, true)
               }
               else if (fighter.species === 'mantis') this.mantisAttack(fighter, target, nx, ny)
@@ -7678,6 +7679,7 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     if (poses.meng && !mengBody && fighter.attack > 0 && !fighter.zombie && !fighter.mengDash && !fighter.mengClone && !fighter.mengStep && !meditating) {
       drawMengSwing(c, 1 - fighter.attack, fighter.mengThunder)
     }
+    if (fighter.species === 'kunlun' && fighter.attack > 0 && !fighter.zombie) drawKunlunSwing(c, 1 - fighter.attack)
     if (poses.yan && yanDash > 0) drawYanDash(c, yanDash)
     if (poses.ninja && dashing) {
       const progress = fighter.dash ? 1 - fighter.dash.time / NINJA_DASH.duration
