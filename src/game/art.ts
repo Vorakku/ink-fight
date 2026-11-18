@@ -9,6 +9,44 @@ export function ellipse(c: C, x: number, y: number, rx: number, ry: number, fill
   c.stroke()
 }
 
+// A sword trail around (0,0): the crescent the blade's edge sweeps from angle `from` toward `to` at radius `r`.
+// `reveal` 0..1 is how far the tip has swung; past 1 the tail catches up and the trail vanishes (gone at 1.85).
+// Thickest just behind the tip and razor-sharp at both ends: a soft `glow`, a `body` and a white-hot cutting edge.
+export function bladeArc(c: C, r: number, from: number, to: number, width: number, reveal: number, body: string, glow: string, core = '#ffffff') {
+  const head = Math.min(1, reveal), tail = Math.min(1, Math.max(0, reveal - 0.85))
+  if (head - tail < 0.02) return
+  const n = 24, a = (t: number) => from + (to - from) * (tail + (head - tail) * t)
+  const crescent = (scale: number) => {
+    c.beginPath()
+    for (let i = 0; i <= n; i++) c.lineTo(Math.cos(a(i / n)) * r, Math.sin(a(i / n)) * r) // the outer edge, where the blade cut
+    for (let i = n; i >= 0; i--) {
+      const t = i / n, w = width * scale * Math.sin(Math.PI * t) ** 0.7 * (0.25 + 0.75 * t) ** 1.4
+      c.lineTo(Math.cos(a(t)) * (r - w), Math.sin(a(t)) * (r - w))
+    }
+    c.closePath()
+    c.fill()
+  }
+  c.save()
+  c.fillStyle = glow
+  c.shadowColor = glow
+  c.shadowBlur = width * 1.2
+  c.globalAlpha *= 0.45
+  crescent(1.5)
+  c.restore()
+  c.save()
+  c.fillStyle = body
+  crescent(1)
+  c.fillStyle = core
+  crescent(0.42)
+  c.strokeStyle = '#ffffff' // the razor line itself
+  c.lineWidth = Math.max(0.6, width * 0.08)
+  c.lineCap = 'round'
+  c.beginPath()
+  for (let i = 3; i <= n; i++) c.lineTo(Math.cos(a(i / n)) * r, Math.sin(a(i / n)) * r)
+  c.stroke()
+  c.restore()
+}
+
 export function line(c: C, ...points: number[]) {
   c.beginPath()
   c.moveTo(points[0], points[1])

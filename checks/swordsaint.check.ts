@@ -71,13 +71,13 @@ import { SWORD_SAINT, SWORD_SAINT_FISHING, SWORD_SAINT_GIANT, SWORD_SAINT_MELEE,
   assert.equal(saint.saint, null)
 }
 
-// On foot, circling swords can deflect a whole hit.
+// On foot, a sword standing guard deflects a whole hit.
 {
   const battle = new Battle(() => 0.01)
   battle.resize(1600, 1000)
   const saint = battle.spawn(300, 500, 'red', 'swordsaint')!
   const enemy = battle.spawn(900, 500, 'blue', 'goose')!
-  saint.saint = { phase: 'melee', time: 0, target: enemy, trail: null, combo: 0 }
+  saint.saint = { phase: 'melee', time: 0, target: enemy, trail: null, combo: 0, helpers: [{ k: 0, guard: true }] }
   const api = battle as unknown as { hit(target: Fighter, damage: number, kx: number, ky: number, owner: Fighter): boolean }
   assert.equal(api.hit(saint, 20, 0, 0, enemy), false)
   assert.equal(saint.hp, SWORD_SAINT.hp, 'Deflected hits deal no damage')

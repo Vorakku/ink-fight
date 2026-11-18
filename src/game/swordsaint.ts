@@ -28,13 +28,14 @@ export const SWORD_SAINT_GIANT = {
 // Close combat: an enemy within `trigger` px (beyond both radii) makes him backflip off his sword while every
 // floating sword and the ridden one fly at it. After `flip` seconds he blinks behind the enemy with a sonic
 // slash, then fights on foot: `combo` quick slashes `slashCooldown` apart, then a dash through the enemy and a
-// `recover` pause. Swords that flew return and stab with each slash (`perSword` / `dashPerSword` bonus) and
-// can deflect a hit outright (`deflectPerSword` chance each, up to `deflectMax`). When the enemy falls he
-// backflips back onto his sword over `mount` seconds.
+// `recover` pause. Swords that flew return to float beside him; with each slash and dash one of them (two in
+// bamboo form) steps in: with `assistChance` it stabs alongside (`assist` / `dashAssist` bonus), otherwise it
+// stands guard and deflects the next hit outright. When the enemy falls he backflips back onto his sword over
+// `mount` seconds.
 export const SWORD_SAINT_MELEE = {
   trigger: 36, flip: 0.45, mount: 0.45, flipHeight: 30, hop: 70, blinkDamage: 50, blinkKnockback: 160,
-  combo: 5, damage: 10, perSword: 2, slashCooldown: 0.16, dashDamage: 30, dashPerSword: 4, dashKnockback: 220,
-  recover: 0.7, reach: 12, deflectPerSword: 0.05, deflectMax: 0.5, returnSpeed: 420, trail: 0.3,
+  combo: 5, damage: 10, assist: 12, slashCooldown: 0.16, dashDamage: 30, dashAssist: 24, dashKnockback: 220,
+  recover: 0.7, reach: 12, assistChance: 0.5, returnSpeed: 420, trail: 0.3,
 } as const
 
 // Fishing: waits `wait` seconds (min, extra random), then adjusts the rod, reels in a catch or moves along the
@@ -91,16 +92,35 @@ function orbitSlot(k: number, count: number, time: number) {
     tilt: Math.atan2(Math.cos(angle) * ry, -Math.sin(angle) * rx) + Math.PI / 2, front: Math.sin(angle) > 0 }
 }
 
+// Meditating: the k-th of `count` swords circling him point-down on a wide flat ring, like Yan Jin's.
+function meditateSlot(k: number, count: number, time: number) {
+  const angle = k / count * Math.PI * 2 + time * 0.025
+  return { x: Math.cos(angle) * 34, y: -28 + Math.sin(angle) * 9, tilt: Math.PI + Math.cos(angle) * 0.2, front: Math.sin(angle) > 0 }
+}
+
+export type SaintHelper = { k: number; guard: boolean }
+
 // The floating swords, either the ones behind his sprite or the ones in front.
-// `jab` 0..1 swings them level and thrusts them forward to stab alongside his slash.
-// `orbit` spins them in the Sword Ward ring; `scale` and `bamboo` come from his bamboo form.
-export function drawSwordFan(c: C, count: number, time: number, seed: number, front: boolean, jab = 0, orbit = false, scale = 1, bamboo = false) {
+// `helpers` are the swords stepping in during close combat: a striker flies from its slot to stab level in front
+// of him as `jab` 1..0 fades, a guard holds upright before him to deflect.
+// `orbit` spins them in the Sword Ward ring or the meditation ring; `scale` and `bamboo` come from his bamboo form.
+export function drawSwordFan(c: C, count: number, time: number, seed: number, front: boolean, jab = 0,
+  orbit: 'ward' | 'meditate' | null = null, scale = 1, bamboo = false, helpers: readonly SaintHelper[] = []) {
   for (let k = 0; k < count; k++) {
-    const { x, y, tilt, front: inFront } = orbit ? orbitSlot(k, count, time) : swordSlot(k, time, seed)
-    if (inFront !== front) continue
+    const slot = orbit === 'ward' ? orbitSlot(k, count, time) : orbit === 'meditate' ? meditateSlot(k, count, time) : swordSlot(k, time, seed)
+    const helper = helpers.find((h) => h.k === k)
+    if ((helper ? true : slot.front) !== front) continue
     c.save()
-    c.translate(x + jab * 12, y)
-    c.rotate((-Math.PI / 2 + tilt) * (1 - jab))
+    if (helper?.guard) {
+      c.translate(15, -26)
+      c.rotate(-Math.PI / 2 + 0.15)
+    } else if (helper) {
+      c.translate(slot.x + (22 - slot.x) * jab, slot.y + (-22 - slot.y) * jab)
+      c.rotate((-Math.PI / 2 + slot.tilt) * (1 - jab))
+    } else {
+      c.translate(slot.x, slot.y)
+      c.rotate(-Math.PI / 2 + slot.tilt)
+    }
     drawVapor(c, time + k * 17, 0.6, 4)
     drawBlade(c, 16 * scale, bamboo, time + k * 17)
     c.restore()
@@ -167,11 +187,11 @@ export function drawFlyingSword(c: C, x: number, y: number, angle: number, time:
   c.restore()
 }
 
-// The jade streak left by his sonic-slash blink; `fade` 1..0.
-export function drawSonicTrail(c: C, fromX: number, fromY: number, toX: number, toY: number, fade: number) {
+// The jade streak left by his sonic-slash blink; `fade` 1..0. Meng Chuan's Sonic Dash paints it in his own `color`.
+export function drawSonicTrail(c: C, fromX: number, fromY: number, toX: number, toY: number, fade: number, color = JADE) {
   c.save()
   c.lineCap = 'round'
-  c.strokeStyle = JADE
+  c.strokeStyle = color
   c.globalAlpha = 0.3 * fade
   c.lineWidth = 14
   line(c, fromX, fromY, toX, toY)

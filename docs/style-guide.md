@@ -389,8 +389,9 @@ silk or frame: blue far peaks and green near hills rising out of nothing at both
 drifting mist, a pale gold sun, wild geese, three flowing wind ribbons with cloud curls, a swaying ginkgo branch,
 the inscription 秋风 and a red seal. Ginkgo and bamboo leaves blow out of it and gusts race past. Everything
 dissolves after 2.4 seconds.
-He is a master of the parry (`MENG_PARRY`): each enemy hit (melee or projectile) has a 75% chance to be turned aside
-for no damage while he is on his feet and free (not stunned, frozen, scared, grabbed, thrown or mid-dash).
+He is a master of the parry (`MENG_PARRY`), in every form: each enemy hit (melee or projectile) has a 90% chance to be
+turned aside for no damage while he is on his feet and free (not stunned, frozen, scared, grabbed, thrown or mid-dash).
+A parried projectile is batted back the way it came and now hurts its sender's side.
 Damage over time is never parried. He turns to the attacker and holds a guard pose, the jian raised across his face,
 for 0.25 seconds. The parry spark is a curved ink-cyan-white blade flash, a four-point glint, a pale ring, gold
 sparks sprayed back at the attacker and a ginkgo leaf knocked loose; only one spark shows per guard.
@@ -402,4 +403,64 @@ through it to the opposite side of the circle, crossing like a star, and cut for
 while the clones dissolve into ink, and the name 五影秋斩 is drawn above it. The characters slide in and float,
 filled with the slash colours flowing through them, with colour fringes and a brush stroke sweeping under them.
 The enemy's death or escape ends it early.
+In the Devil Saint form, 悲苍一画秋风 (`MENG_RING`) is one huge brush stroke swept nearly all the way round him at body
+height, its far side passing behind him: dry and thin at the tail, fattening toward a white-hot head; an umber-and-ochre
+ink body blotched with darker wash and cracked with black veins, gold light blazing along the outer rim and a thinner
+line on the inner, gold flecks glinting, red ink flung off it. Its name stands in two columns of white brush
+characters edged in ink, with red spatter and a red 秘技 seal, after the reference art the user supplied.
 His palette is yellow, blue and green; that is the deliberate difference from Yan Jin's black-and-white yin and yang.
+His Body Refinement Divine-Demon form (炼体神魔, `MENG_BODY`, the fire bar) fights with fists. Look: spiky red hair over
+dark roots, red marks on his face, a bare chest under red-gold flame plates split by a red crack, flame pauldron,
+forearms plated red-gold and blazing to the fist, dark smoky ragged wings off both shoulders, layered dark belts with
+silver buckles over orange-trimmed hanging cloth, black trousers and boots, a burning orange eye. Poses: ready (fists
+up), punch, parry (forearm across his face), meditate, raise (both fists overhead). His effects are seven-colour sha
+(`MENG_SHA`: red, orange, yellow, green, blue, black, white) in the same brush language as his slashes: each punch draws
+a black ink brush stroke after the fist along a curve (left and right fists bow opposite ways), thick at the fist and
+tapering into split dry hairs with drops flicked off the bend, its head stained the punch's colour; out of the fist the
+colour blooms into its own painted motif, clean and ink-outlined like a scroll painting: red a plum blossom, orange a
+curling flame, yellow a chrysanthemum, green a spray of bamboo leaves, blue an auspicious cloud, black an ink orchid,
+white a white mist cloud. Each opens with a small overshoot inside a soft halo of its tint and a brushed ring sweeping
+round it, drifts along the throw and turns gently, with gold motes rising, then fades; a smaller one opens where the
+punch lands. The heavy fourth punch has a longer, heavier stroke and a motif nearly twice the size. White sha always
+has an ink edge and black a pale halo. Seven Sha Fists (`MENG_FISTS`)
+leaves seven fist strokes fanned around the target, each with a pale fist afterimage, and ends in a flash, seven petals
+of colour brushed outward like a painted flower, an ink ring and flung ink. Sonic Dash (`MENG_SONIC`) leaves a
+red-orange streak with a white core behind him (the Sword Saint's sonic trail in his colour) and a sha splash where it
+lands. Sha Kasaya (`MENG_KASAYA`) is a robe of
+translucent brushed ribbons in the seven colours hanging from his shoulders, rippling, hems fraying into dry hairs,
+embers lifting off. Red Lotus Karmic Fire (`MENG_LOTUS`) lands with a white flash and ink shock ring, spreads a burning
+orange wash with a dark ragged edge, and brushes a great red lotus open petal by petal (deep red at the base to pale at
+the tip, ink outline and vein strokes) around a gold seed pod, flames licking off the petal tips and embers rising; the
+name 红莲业火 slams down in ember-to-red calligraphy edged ink and white over a red brush stroke, and a red 神魔 seal
+is pressed beside it. His rampage (`MENG_RAGE`, below 25% HP) wreathes him in dark red and orange flame tongues with
+black smoke and embers rising (`drawMengRage`). Two extra poses: hook (the far arm swung round across his front at chin
+height, the near fist in guard) and slam (dropped into a crouch, feet planted, both blazing fists driven to the ground).
+The slam leaves a giant handprint (`drawMengPrint`): palm and splayed fingers pressed into the ground in black ink,
+rimmed with embers cooling from gold to dull red, cracks splitting out, and a shock ring and flung ink as it lands.
+In his Lightning and Thunder Saint form lightning lives on him (`drawMengAura`, `MENG_AURA`): small gold arcs crackle
+round his body, re-forked every couple of frames, and every so often a bolt with an ink underline jumps out to a random
+spot nearby, leaving a spark burst and a small ink splash. It is only drawn and deals no damage.
+His Lightning and Thunder Saint form's ultimate, Divine Thunder Slash (神雷斩, `MENG_GOD`), is a once-per-fight cinematic
+in ink with gold light always sitting on ink, never bare neon. He jumps to the centre and hovers over a gold ring
+dripping ink motes, his sash and hair lifting. Behind him black smoke rises off the ground and climbs, a billowing
+front, into a tall arched double door of nothing but smoke, no frame (`drawMengGod`), smoke curling up its sides and a gold-to-orange gradient glowing along its edges and down the seam where its leaves meet. Two big hooked eagle eyes on its
+leaves, ink-lidded under heavy brows, appear shut, then open wide onto pure blue-white light (no iris or pupil), flaring a blue light trail off
+their corners. The leaves narrow apart and the whole screen goes white (`drawMengGodLight`), then fades away onto a red-gold
+glow, revealing the divine lightning emperor seated behind the door and towering over it (`drawMengAvatar`):
+a majestic god on a stone seat, at his ease and menacing, never a monster. He leans left onto his left knee,
+drawn up with the foot on the seat's edge, his arm braced on it and the hand gripping the knee; the right leg is planted,
+its forearm resting on the knee and the fist gripping a lightning spear. A gold halo rimmed in small flames behind his
+head, a red celestial scarf arching over it and streaming down both sides, dark curling hair under a flame-peaked gold
+crown. Ornate armour: rounded layered gilt pauldrons and a gold breastplate with filigree curls and a round mirror over
+the heart, gilt knee guards and greaves. His head is drawn larger so the face reads: ears with gold rings, modelled sockets,
+cheekbones and hollows, a pulsing red flame mark on the brow, tapered brows (one arched), and no nose, mouth or beard,
+nothing on his face but the eyes: heavy-lidded, burning red round a white-hot core,
+their outer corners pulse, a glint streaks across each, light runs back toward the temples and red vapour pours off. Gold lightning veins on bronze-gold skin, ink outlines and
+shading. A furnace of red cloud behind him, smoke rising
+and lightning crackling round him; he breathes slowly. The storm (`drawMengStorm`) drops jagged bolts with an ink underline from above the
+screen, each with a white flash and an ink splash, and red ink spatter flicks across the field; a last bolt falls into
+his hand. The crescent (`drawMengDivineWave`) is one colossal brush stroke: dark ink-brown body with dry-brush grain and
+branching cracks, a blazing gold outer edge, a thinner gold inner rim, glittering gold and white flecks, a ragged
+split-hair tail where it starts and a sharp tip, lightning threads and red ink thrown off. The name is a vertical column
+of white dry-brush characters (pale strokes split by bare-paper streaks, ragged hairs, an ink edge) brushed in top to
+bottom beside the crescent, with a small red 秘技 seal stamped under them. Door and god dissolve into drifting smoke.

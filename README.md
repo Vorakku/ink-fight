@@ -78,10 +78,11 @@ A fresh starting point for Inkfight, keeping the notebook page and basic control
   every floating sword and his ridden sword fly at it. After 0.45 seconds he blinks
   behind the enemy with a sonic slash (50 damage, jade streak), then fights on foot
   with a five-slash combo (below). The thrown swords
-  fly back and stab alongside each slash, and each gives a 5% chance (up to 50%) to
-  deflect a whole hit. When the enemy falls he backflips back onto his sword. He is immune to all damage during both backflips.
+  fly back and float beside him; with each cut one of them (two in bamboo form) steps in,
+  either stabbing alongside (+12 damage, +24 on the dash) or standing guard to deflect
+  the next whole hit. When the enemy falls he backflips back onto his sword. He is immune to all damage during both backflips.
   With no enemy in sight he rests on his sword: hurt, he sits cross-legged and
-  meditates in a jade aura, healing 40 HP per second; at full health he flies to the
+  meditates in a jade aura while his floating swords circle him point-down, healing 40 HP per second; at full health he flies to the
   nearest water and fishes with a bamboo rod. Any enemy ends the rest.
   Giant sword: ranged attacks roll his skills when ready (6-second shared cooldown):
   20% giant sword, 30% Sword Storm. Eight spirit swords (not his floating ones)
@@ -432,6 +433,76 @@ when resting on a tower. The self-strike shows a blue impact ring and damages no
 one. Nearby enemies, damage, disabling effects and an absent hammer interrupt
 meditation. Pause freezes the ritual and its effects; death, conversion and Clear
 remove unfinished meditation.
+
+Meng Chuan (Devil Saint form) sits cross-legged with his jian across his lap and
+meditates in a blue aura, healing 45 HP per second. Every enemy he kills leaves a
+body for 30 seconds; with no enemy near he meditates even at full health while a
+body remains, and two fanged devil orbs with smoky tails come out of him, chew it
+for 1.2 seconds and heal him 160 HP per unit of the body's size squared, then move
+on to the next body or go back inside him. Buildings and devils leave no body.
+
+The first time he drops to half health he raises his jian, untouchable and unstoppable (stuns, knockups, lures and grabs fall away), and three
+bars of light rise over his head: fire orange, gold and the tallest, blue. A light
+flickers across them and settles at random on one of the three.
+
+Fire, the Body Refinement Divine-Demon (炼体神魔): sha qi refined into his flesh
+turns his hair red and spiky, red-gold flame armour covers his bare chest (split by
+a red crack), his forearms blaze to the fist and dark smoky wings rise off his
+shoulders. He drops the jian and fights with his fists: speed 175, a punch every
+0.3 s for 22. Undying Body: he takes 30% less damage from enemies and regenerates
+10 HP per second at all times. Every punch leaks one colour of seven-colour sha in
+turn (red, orange, yellow, green, blue, black, white), and every fourth is a heavy
+straight that hits everyone in a short cone in front of him for 1.5x damage and
+double knockback. He still parries (with a blazing forearm), and no devils or
+bodies come with this form. Seven Sha Fists (七煞拳): an enemy up to 250 px away
+makes him rush it and throw seven punches, one per colour, for 7 each, then burst
+all seven colours for 12 and heavy knockback around it (7 s cooldown). Sonic Dash:
+an enemy 80 to 320 px away makes him streak to it at 1400 px/s and hit it for 30,
+knocking it up (6 s cooldown). Sha Kasaya
+(煞袈裟): an enemy within 120 px wraps him in a seven-colour mantle for 4 s (12 s
+cooldown); nothing stuns, freezes, scares, lifts, lures or grabs him and enemies
+touching him catch fire. His ultimate is Red Lotus Karmic Fire (红莲业火): 3 s into
+the form and every 20 s after, an enemy within 200 px makes him leap up,
+untouchable, and drive both fists down. A red lotus of fire 110 px across blooms
+where he lands: 70 damage and big knockback, then 3 s of burning for everyone
+standing in it, while the name slams in over him with a red seal.
+Below 25% HP he goes on a rampage for the rest of the fight, wreathed in red flame:
+nothing can stun, freeze, scare, lift, lure or grab him, and his attacks become a
+chain of a left hook, a right hook (1.3x damage each) and a ground slam that hits
+every enemy within 80 px for 2.4x damage, knocks them all up and leaves a burning
+handprint in the ground.
+
+Gold, the Lightning and Thunder Saint: lightning strikes him and he changes to
+spiky white hair, gold armour on his arms and shoulders, a bare chest with a fiery
+tattoo and a blade of glowing lightning. He moves at 235 instead of 140 and cuts
+from up to 170 px away; every slash throws a crescent of lightning wrapped in wind
+that flies 320 px, hitting each enemy in its path once for 30. This form has no
+devils and leaves no bodies; he meditates in a gold aura with the usual heal.
+Lightning crackles round him all the time and now and then a bolt jumps out from him
+to a random spot nearby (just for show, it deals no damage).
+His first skill is Lightning Step in place of Autumn Breeze: an enemy up to 620
+px away makes him zig-zag at it in four lightning flashes, untouchable while he
+flashes and leaving crackling gold trails, then cut it as lightning falls from the
+sky (55 damage, 0.5 s stun, 6 s cooldown). Autumn Breeze and Five Autumn Shadows
+are gone in this form, but he still parries (90% of hits in every form, batting
+projectiles back the way they came). His ultimate is Divine Thunder Slash (神雷斩), once per fight: the first time he
+drops below 25% HP with an enemy on the field, the battle stops to watch. Every enemy
+freezes in shock while he jumps to the centre of the field and levitates. Behind him
+a door of black smoke gathers, eagle eyes on it open and blaze gold, and it swings
+open in a flash that lights up the whole screen: behind it his lightning emperor god
+sits towering, majestic, leaning on one raised knee, his eyes glowing red. The screen shakes harder and harder as
+lightning rains on the field, striking every enemy once for 20. A bolt falls into his
+hand and he cuts toward the thickest group: one colossal painted crescent that grows
+until it leaves the field, hitting every enemy it crosses once for 200 with heavy
+knockback and a 1 s stun. Untouchable throughout, he lands about 6 s after it began,
+while 神雷斩 is brushed in white beside the crescent over a red 秘技 seal.
+
+Blue, the Devil Saint: his two devils burst out to fight beside him (220
+HP each, biting for 22). A fallen devil returns after he or a devil kills an
+enemy, up to two at a time, and they die with him. With no enemy near they eat his
+bodies for him instead of coming out of him. He also gains 悲苍一画秋风: an enemy
+within 90 px makes him cut all the way round himself, 36 damage to every enemy
+within 90 px and binding them in place for 1 s (9 s cooldown).
 
 Encore's adult artwork now has broad layered flame-feather wings, a swept crest,
 a hooked bird beak and long curling crimson-and-gold tail feathers. Her healing

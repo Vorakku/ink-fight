@@ -13,7 +13,7 @@ import { buildZombieSprite, buildZombieVariant, ZOMBIE } from './zombie.ts'
 import { buildVampireSprite, VAMPIRE } from './vampire.ts'
 import { buildSwordSaintSprite, SWORD_SAINT } from './swordsaint.ts'
 import { buildYanDemonSprite, buildYanJinSprite, YAN_JIN } from './yanjin.ts'
-import { buildMengChuanSprite, MENG_CHUAN } from './mengchuan.ts'
+import { buildMengChuanSprite, buildMengDevilSprite, MENG_CHUAN, MENG_DEVIL } from './mengchuan.ts'
 import { buildFoxSpiritSprite, buildMeiSprite, MEI_SPIRIT, MEI_YUANZHI } from './meiyuanzhi.ts'
 import { ANT, ANTHILL, ANT_QUEEN, ANT_TANK, ANT_SLASHER, ANT_FLY, buildAntSprite, buildAnthillSprite, buildAntQueenSprite, buildAntTankSprite, buildAntSlasherSprite, buildAntFlySprite } from './ant.ts'
 
@@ -38,6 +38,7 @@ export const UNITS = {
   'mei-fox': { ...MEI_SPIRIT, buildSprite: buildFoxSpiritSprite },
   yanjin: { ...YAN_JIN, scare: 0, buildSprite: buildYanJinSprite },
   mengchuan: { ...MENG_CHUAN, scare: 0, buildSprite: buildMengChuanSprite },
+  'meng-devil': { ...MENG_DEVIL, buildSprite: buildMengDevilSprite },
   ant: { ...ANT, scare: 0, buildSprite: buildAntSprite },
   anthill: { ...ANTHILL, scare: 0, buildSprite: buildAnthillSprite },
   'ant-queen': { ...ANT_QUEEN, scare: 0, buildSprite: buildAntQueenSprite },
@@ -57,7 +58,7 @@ export const CHARACTER_CATEGORIES: Record<(typeof CHARACTERS)[number], Category>
   spartan: 'People', cavalry: 'People',
   mantis: 'Bug', swordsaint: 'Hero', meiyuanzhi: 'Hero', yanjin: 'Hero', mengchuan: 'Hero',
 }
-export const SPECIES: Species[] = [...CHARACTERS, 'anthill', 'ant-queen', 'ant-tank', 'ant-slasher', 'ant-fly', 'dragon-nest', 'dragon-egg', 'rex-egg', 'mei-fox']
+export const SPECIES: Species[] = [...CHARACTERS, 'anthill', 'ant-queen', 'ant-tank', 'ant-slasher', 'ant-fly', 'dragon-nest', 'dragon-egg', 'rex-egg', 'mei-fox', 'meng-devil']
 
 type RexVariant = {
   ready: HTMLCanvasElement; shocked: HTMLCanvasElement
@@ -74,7 +75,10 @@ type Poses = {
   }[]
   zombie: { ready: HTMLCanvasElement; shocked: HTMLCanvasElement; chick?: HTMLCanvasElement; shockedChick?: HTMLCanvasElement }
   ninja?: { poke: HTMLCanvasElement; slash: HTMLCanvasElement }
-  meng?: { slash: HTMLCanvasElement; parry: HTMLCanvasElement }
+  meng?: { slash: HTMLCanvasElement; parry: HTMLCanvasElement; meditate: HTMLCanvasElement; raise: HTMLCanvasElement
+    thunder: { ready: HTMLCanvasElement; slash: HTMLCanvasElement; parry: HTMLCanvasElement; meditate: HTMLCanvasElement; raise: HTMLCanvasElement }
+    body: { ready: HTMLCanvasElement; punch: HTMLCanvasElement; parry: HTMLCanvasElement; meditate: HTMLCanvasElement; raise: HTMLCanvasElement
+      hook: HTMLCanvasElement; slam: HTMLCanvasElement } }
   yan?: { slice: HTMLCanvasElement; raise: HTMLCanvasElement; slam: HTMLCanvasElement; meditate: HTMLCanvasElement; lift: HTMLCanvasElement; pierce: HTMLCanvasElement; charge: HTMLCanvasElement; cleave: HTMLCanvasElement
     idle: HTMLCanvasElement; seppuku: HTMLCanvasElement
     demon: { ready: HTMLCanvasElement; slash: HTMLCanvasElement; raise: HTMLCanvasElement; plant: HTMLCanvasElement; lift: HTMLCanvasElement; roar: HTMLCanvasElement } }
@@ -225,7 +229,20 @@ export function buildSprites(): Sprites {
           shockedChick: undeadChick ? buildShockedSprite(undeadChick, 24, 26) : undefined,
         },
         ninja: species === 'ninja' ? { poke: buildNinjaSprite(color, 'poke'), slash: buildNinjaSprite(color, 'slash') } : undefined,
-        meng: species === 'mengchuan' ? { slash: buildMengChuanSprite(color, 'slash'), parry: buildMengChuanSprite(color, 'parry') } : undefined,
+        meng: species === 'mengchuan' ? { slash: buildMengChuanSprite(color, 'slash'), parry: buildMengChuanSprite(color, 'parry'), meditate: buildMengChuanSprite(color, 'meditate'), raise: buildMengChuanSprite(color, 'raise'),
+          thunder: (() => {
+            const ready = buildMengChuanSprite(color, 'ready', undefined, 'thunder')
+            walks(ready, (step) => buildMengChuanSprite(color, 'ready', step, 'thunder'))
+            return { ready, slash: buildMengChuanSprite(color, 'slash', undefined, 'thunder'), parry: buildMengChuanSprite(color, 'parry', undefined, 'thunder'),
+              meditate: buildMengChuanSprite(color, 'meditate', undefined, 'thunder'), raise: buildMengChuanSprite(color, 'raise', undefined, 'thunder') }
+          })(),
+          body: (() => {
+            const ready = buildMengChuanSprite(color, 'ready', undefined, 'body')
+            walks(ready, (step) => buildMengChuanSprite(color, 'ready', step, 'body'))
+            return { ready, punch: buildMengChuanSprite(color, 'punch', undefined, 'body'), parry: buildMengChuanSprite(color, 'parry', undefined, 'body'),
+              meditate: buildMengChuanSprite(color, 'meditate', undefined, 'body'), raise: buildMengChuanSprite(color, 'raise', undefined, 'body'),
+              hook: buildMengChuanSprite(color, 'hook', undefined, 'body'), slam: buildMengChuanSprite(color, 'slam', undefined, 'body') }
+          })() } : undefined,
         saint: species === 'swordsaint' ? { ...buildSaintPoses(color, false),
           bamboo: { ready: buildSwordSaintSprite(color, 'ride', undefined, true), ...buildSaintPoses(color, true) } } : undefined,
         yan: species === 'yanjin' ? { slice: buildYanJinSprite(color, 'slice'), raise: buildYanJinSprite(color, 'raise'),

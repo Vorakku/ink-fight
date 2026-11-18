@@ -1,4 +1,4 @@
-import { box, buildSprite, ellipse, INK, leg, line, opposite, poly, type C } from './art.ts'
+import { bladeArc, box, buildSprite, ellipse, INK, leg, line, opposite, poly, type C } from './art.ts'
 
 const SKIN = '#f2d2b0', HAIR = '#eef0f5', HAIR_SHADE = '#bfc4d2', PINK = '#ef86a6', GOLD = '#e0b04a'
 const COAT = '#3a3842', COAT_DARK = '#24222a', TRIM = '#8a8796', ROBE = '#f4f1ea', STRIPE = '#cfcabd'
@@ -421,6 +421,148 @@ function brushArc(c: C, r: number, from: number, to: number, width: number, reve
   c.restore()
 }
 
+// ---- Ink painting: the brushwork behind his skills ----
+
+const PAPER = '#fbf7ec', VERMILION = '#c8231e', WASH = '#8a86a0'
+const inkNoise = (i: number, k: number) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v) }
+
+// The ragged edge of an ink blot `r` px wide at angle `a`: lumps where the ink bled, the same every frame for `seed`.
+function blotRadius(r: number, a: number, seed: number) {
+  return r * (1 + 0.16 * Math.sin(3 * a + seed) + 0.09 * Math.sin(7 * a + seed * 1.7) + 0.05 * Math.sin(13 * a + seed * 2.3))
+}
+
+// A ragged blob of ink around (0, 0), `squash` as deep as wide.
+function blob(c: C, r: number, squash: number, seed: number) {
+  c.beginPath()
+  for (let i = 0; i <= 36; i++) {
+    const a = i / 36 * Math.PI * 2, d = blotRadius(r, a, seed)
+    c.lineTo(Math.cos(a) * d, Math.sin(a) * d * squash)
+  }
+  c.closePath()
+  c.fill()
+}
+
+// An ink blot around (0, 0), spread `bloom` 0..1: a pale wash bleeding past a ragged dark body, tapered splashes
+// shooting out of its edge and a drop flung past each one.
+function inkBlot(c: C, r: number, squash: number, seed: number, bloom: number, ink: string, wash: string) {
+  if (bloom <= 0 || r <= 0) return
+  const R = r * bloom, base = c.globalAlpha
+  c.fillStyle = wash
+  c.globalAlpha = base * 0.22
+  for (let k = 0; k < 3; k++) blob(c, R * (1.25 + k * 0.22), squash, seed + k * 5)
+  c.globalAlpha = base
+  c.fillStyle = ink
+  blob(c, R, squash, seed)
+  for (let k = 0; k < 9; k++) {
+    const a = inkNoise(seed, k) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a)
+    const from = blotRadius(R, a, seed) * 0.85, len = R * (0.35 + inkNoise(seed, k + 20) * 0.7), w = R * (0.07 + inkNoise(seed, k + 40) * 0.08)
+    const px = (along: number, side: number) => ca * along - sa * side, py = (along: number, side: number) => (sa * along + ca * side) * squash
+    c.beginPath()
+    c.moveTo(px(from, w), py(from, w))
+    c.quadraticCurveTo(px(from + len * 0.5, w * 0.7), py(from + len * 0.5, w * 0.7), px(from + len, 0), py(from + len, 0))
+    c.quadraticCurveTo(px(from + len * 0.5, -w * 0.7), py(from + len * 0.5, -w * 0.7), px(from, -w), py(from, -w))
+    c.fill()
+    const d = from + len * (1.25 + inkNoise(seed, k + 60) * 0.6)
+    c.beginPath()
+    c.arc(px(d, 0), py(d, 0), w * 0.55, 0, Math.PI * 2)
+    c.fill()
+  }
+}
+
+// A flying drop of ink at (x, y) heading `angle`: a round head and a tail drawn out behind it.
+function drop(c: C, x: number, y: number, angle: number, r: number, tail: number) {
+  c.save()
+  c.translate(x, y)
+  c.rotate(angle)
+  c.beginPath()
+  c.arc(0, 0, r, -Math.PI / 2, Math.PI / 2)
+  c.quadraticCurveTo(-tail * 0.5, r * 0.5, -tail, 0)
+  c.quadraticCurveTo(-tail * 0.5, -r * 0.5, 0, -r)
+  c.fill()
+  c.restore()
+}
+
+// A dry-brush streak from (0, 0) back along -x for `len`: a pressed body tapering away and splitting into hairs.
+function dryStreak(c: C, len: number, width: number, ink: string) {
+  c.fillStyle = c.strokeStyle = ink
+  c.beginPath()
+  c.moveTo(0, -width / 2)
+  c.quadraticCurveTo(-len * 0.4, -width * 0.5, -len * 0.7, 0)
+  c.quadraticCurveTo(-len * 0.4, width * 0.5, 0, width / 2)
+  c.closePath()
+  c.fill()
+  c.lineCap = 'round'
+  c.lineWidth = Math.max(0.4, width * 0.13)
+  for (let k = 0; k < 4; k++) {
+    const off = (k / 3 - 0.5) * width * 0.8
+    line(c, -len * 0.3, off, -len * (0.8 + (k % 2) * 0.2), off * 1.4)
+  }
+}
+
+// Ink-wash mountains (shan shui) standing on the ground line, `w` wide and up to `h` tall around x = 0: three
+// ranges, pale and far to dark and near, each fading into mist at its foot. `rise` 0..1 paints them up.
+// `rgb` is the ink as "r,g,b".
+function inkMountains(c: C, w: number, h: number, seed: number, rise: number, rgb: string) {
+  if (rise <= 0) return
+  const base = c.globalAlpha, n = 10
+  for (let layer = 0; layer < 3; layer++) {
+    const lh = h * (1 - layer * 0.25) * ease(rise - layer * 0.15), shift = (layer - 1) * w * 0.12
+    if (lh <= 0) continue
+    const mist = c.createLinearGradient(0, -lh, 0, 0)
+    mist.addColorStop(0, `rgba(${rgb},1)`)
+    mist.addColorStop(0.5, `rgba(${rgb},.85)`)
+    mist.addColorStop(1, `rgba(${rgb},0)`)
+    c.fillStyle = mist
+    c.globalAlpha = base * [0.22, 0.4, 0.75][layer]
+    c.beginPath()
+    c.moveTo(shift - w / 2, 0)
+    for (let i = 1; i < n; i++) {
+      const peak = i % 2 ? 0.7 + inkNoise(seed + layer, i) * 0.3 : 0.3 + inkNoise(seed + layer, i + 9) * 0.25
+      c.lineTo(shift - w / 2 + w * (i + (inkNoise(seed + layer, i + 30) - 0.5) * 0.5) / n, -lh * peak * Math.sin(Math.PI * i / n) ** 0.4)
+    }
+    c.lineTo(shift + w / 2, 0)
+    c.closePath()
+    c.fill()
+  }
+  c.globalAlpha = base
+}
+
+// A red artist's seal stamped at (x, y), `size` px square with `char` cut in white; `stamp` 0..1 presses it down.
+function sealStamp(c: C, x: number, y: number, size: number, char: string, stamp: number) {
+  if (stamp <= 0) return
+  const k = 1 + (1 - ease(stamp)) * 0.8
+  c.save()
+  c.translate(x, y)
+  c.scale(k, k)
+  c.rotate(-0.06)
+  c.globalAlpha *= Math.min(1, stamp * 2)
+  c.fillStyle = VERMILION
+  c.fillRect(-size / 2, -size / 2, size, size)
+  c.fillStyle = PAPER
+  c.font = `bold ${Math.round(size * 0.72)}px KaiTi, STKaiti, "Kaiti SC", "Noto Serif CJK SC", serif`
+  c.textAlign = 'center'
+  c.textBaseline = 'middle'
+  c.fillText(char, 0, size * 0.04)
+  for (let i = 0; i < 6; i++) c.fillRect((inkNoise(i, 1) - 0.5) * size, (inkNoise(i, 2) - 0.5) * size, 1.2, 1.2) // worn stone
+  c.restore()
+}
+
+// An ink splash left on the ground at (x, y), `age` of `life` seconds: it blooms fast, its wash keeps bleeding
+// outward, then it dries away. Black for his yin strokes, vermilion with a dark heart as the demon.
+export function drawYanInk(c: C, x: number, y: number, size: number, age: number, life: number, seed: number, red: boolean) {
+  const bloom = ease(age / 0.16), dry = Math.min(1, (life - age) / (life * 0.6))
+  if (dry <= 0) return
+  c.save()
+  c.translate(x, y)
+  c.globalAlpha = dry * 0.9
+  inkBlot(c, size * (1 + age / life * 0.15), 0.4, seed, bloom, red ? D_RED : INK, red ? '#ff6a6a' : WASH)
+  if (red) {
+    c.globalAlpha = dry * 0.85
+    blob(c, size * 0.4 * bloom, 0.4, seed + 3)
+  }
+  c.restore()
+}
+
 // The long sword swinging from the slicing hand, leaving a white (yang) brush stroke; `progress` 0..1, `combo` 1..3.
 export function drawYanSwing(c: C, progress: number, combo: number) {
   const k = (combo + 2) % 3, [from, to] = SWEEPS[k], flat = k === 2 ? 0.45 : 1
@@ -432,7 +574,7 @@ export function drawYanSwing(c: C, progress: number, combo: number) {
   c.save()
   c.scale(1, flat)
   c.globalAlpha = Math.max(0, 1 - Math.max(0, progress - 0.35) * 1.6)
-  brushArc(c, SWORD_LENGTH - 2, from, to, 7, swing, '#ffffff', 'rgba(34,31,51,.55)')
+  bladeArc(c, SWORD_LENGTH + 1, from, to, 8, swing + Math.max(0, progress - 0.42) * 1.6, '#d9e2f2', 'rgba(150,170,210,.9)')
   c.restore()
   // A level sweep foreshortens the blade.
   const tx = Math.cos(angle) * SWORD_LENGTH, ty = Math.sin(angle) * SWORD_LENGTH * flat
@@ -444,39 +586,38 @@ export function drawYanSwing(c: C, progress: number, combo: number) {
   c.restore()
 }
 
-// The greatsword's smash: a heavy black (yin) brush stroke from overhead into the ground, then an ink splash
-// where it lands; `progress` 0..1.
+// The greatsword's smash: a heavy black (yin) trail from overhead into the ground, then a crown of ink thrown up
+// where the blade bites, falling back as drops (the blot itself stays on the ground: drawYanInk); `progress` 0..1.
 export function drawYanSmash(c: C, progress: number) {
   c.save()
   c.globalAlpha = Math.max(0, 1 - Math.max(0, progress - 0.3) * 1.5)
   c.translate(8, -24)
-  brushArc(c, 27, -2.7, 1.1, 12, progress * 3, INK)
+  bladeArc(c, 28, -2.7, 1.1, 13, progress * 3, INK, 'rgba(90,80,130,.8)', '#4a4462')
   c.restore()
   if (progress < 0.25) return
   const p = (progress - 0.25) / 0.75
   c.save()
+  c.translate(20, 0)
   c.globalAlpha = 1 - p
   c.fillStyle = INK
-  c.beginPath()
-  c.ellipse(20, 0, 7 + p * 9, 2 + p * 2.5, 0, 0, Math.PI * 2) // ink pooling on the ground
-  c.fill()
-  for (let k = 0; k < 7; k++) {
-    const a = -Math.PI + 0.35 + k * 0.4, d = 6 + p * (16 + (k % 3) * 6)
-    c.beginPath()
-    c.arc(20 + Math.cos(a) * d, -2 + Math.sin(a) * d * 0.6 + p * p * 10, 1.6 - (k % 3) * 0.4, 0, Math.PI * 2)
-    c.fill()
+  for (let k = 0; k < 11; k++) {
+    const a = -Math.PI + 0.3 + k * (Math.PI - 0.6) / 10, v = 22 + (k % 3) * 12
+    const x = Math.cos(a) * v * p * 1.4, y = Math.sin(a) * v * p * 1.7 + 34 * p * p
+    drop(c, x, y, Math.atan2(Math.sin(a) * 1.7 + 68 * p / v, Math.cos(a) * 1.4), 2.3 - (k % 3) * 0.55, 7 - p * 3)
   }
   c.restore()
 }
 
-// Speed lines streaming behind him during his dash; `strength` 0..1.
+// Dry-brush streaks of ink trailing behind him during his dash; `strength` 0..1.
 export function drawYanDash(c: C, strength: number) {
   c.save()
-  c.lineCap = 'round'
-  c.strokeStyle = '#c9d3e6'
-  c.globalAlpha = 0.8 * strength
-  c.lineWidth = 1.6
-  for (const [y, length] of [[-30, 16], [-21, 22], [-12, 14]]) line(c, -12, y, -12 - length * strength, y)
+  c.globalAlpha = 0.6 * strength
+  for (const [y, length, width] of [[-31, 20, 3], [-21, 28, 4.5], [-11, 18, 3]]) {
+    c.save()
+    c.translate(-10, y)
+    dryStreak(c, length * strength, width, INK)
+    c.restore()
+  }
   c.restore()
 }
 
@@ -663,8 +804,8 @@ export function inYanSeal(dx: number, dy: number) {
   return (dx / S.radius) ** 2 + (dy / (S.radius * S.squash)) ** 2 <= 1
 }
 
-// The stab, in sprite-local units (feet at 0,0): speed lines down the sword's path and ink thrown up where the
-// point bites the ground; `progress` 0..1.
+// The stab, in sprite-local units (feet at 0,0): a white streak down the sword's path, then a crown of ink thrown up
+// where the point bites and a blot spreading under it; `progress` 0..1.
 export function drawYanStab(c: C, progress: number) {
   const p = Math.min(1, Math.max(0, progress))
   c.save()
@@ -674,16 +815,11 @@ export function drawYanStab(c: C, progress: number) {
   c.strokeStyle = '#ffffff'
   c.lineWidth = 2.2
   line(c, 0, -40 + p * 30, 0, -4)
-  c.strokeStyle = INK
-  c.lineWidth = 1
-  line(c, -3.5, -34 + p * 26, -3.5, -6)
-  line(c, 3.5, -30 + p * 22, 3.5, -6)
+  inkBlot(c, 8, 0.4, 3, ease(p * 3), INK, WASH)
   c.fillStyle = INK
-  for (let k = 0; k < 6; k++) {
-    const a = -Math.PI / 2 + (k - 2.5) * 0.45, d = 4 + p * 14
-    c.beginPath()
-    c.arc(Math.cos(a) * d, Math.sin(a) * d * 0.9 + p * p * 10, 1.4 - (k % 2) * 0.5, 0, Math.PI * 2)
-    c.fill()
+  for (let k = 0; k < 7; k++) {
+    const a = -Math.PI / 2 + (k - 3) * 0.4, v = 16 + (k % 2) * 6
+    drop(c, Math.cos(a) * v * p, Math.sin(a) * v * p + 18 * p * p, Math.atan2(Math.sin(a) + 2.2 * p, Math.cos(a)), 1.5 - (k % 2) * 0.4, 5)
   }
   c.restore()
 }
@@ -711,23 +847,15 @@ export function drawYanSeal(c: C, x: number, y: number, time: number, tick: numb
   c.beginPath()
   c.arc(0, 0, r * 0.66, 0, Math.PI * 2)
   c.fill()
-  // Brushy outer ring: a few offset strokes with breaks, like a quick ink circle.
-  c.strokeStyle = INK
-  c.lineCap = 'round'
+  // An ensō: one brushed circle pressed heavy and trailing off dry, painted as the seal opens, and a lighter one inside.
   const turn = tick * 0.004
-  for (let k = 0; k < 3; k++) {
-    c.globalAlpha = fade * (0.85 - k * 0.22)
-    c.lineWidth = 3.4 - k
-    c.beginPath()
-    // The seal opens from radius 0; a negative radius makes arc() throw and stops the whole game loop.
-    c.arc(0, 0, Math.max(0, r - k * 1.8), turn + k * 1.3, turn + k * 1.3 + Math.PI * 2 - 0.3 - k * 0.25)
-    c.stroke()
-  }
+  c.globalAlpha = fade * 0.18
+  c.fillStyle = WASH
+  blob(c, r * 1.08, 1, 4) // the wash bleeding past the circle
+  c.globalAlpha = fade
+  if (r > 1) brushArc(c, r, turn, turn + Math.PI * 1.88, 8, ease((time - S.plant) / 0.4), INK)
   c.globalAlpha = fade * 0.75
-  c.lineWidth = 1.4
-  c.beginPath()
-  c.arc(0, 0, r * 0.68, -turn * 1.5, -turn * 1.5 + Math.PI * 2 - 0.2)
-  c.stroke()
+  if (r > 1) brushArc(c, r * 0.68, -turn * 1.5 + 2, -turn * 1.5 + 2 + Math.PI * 1.8, 3, ease((time - S.plant - 0.1) / 0.4), INK)
   // Characters circling between the rings, upright to the viewer.
   c.restore()
   c.fillStyle = INK
@@ -744,10 +872,9 @@ export function drawYanSeal(c: C, x: number, y: number, time: number, tick: numb
     c.restore()
   }
   // Ink splash where the sword went in, and motes drifting up through the seal.
-  c.globalAlpha = fade * 0.6
-  c.beginPath()
-  c.ellipse(0, 0, 9, 3.5, 0, 0, Math.PI * 2)
-  c.fill()
+  c.globalAlpha = fade * 0.8
+  inkBlot(c, 9, S.squash, 9, open, INK, WASH)
+  c.fillStyle = INK
   for (let k = 0; k < 12; k++) {
     const spread = ((k % 4) + 1) / 4 * 0.85, a = k * 2.4
     const rise = (tick * 0.5 + k * 11) % 46
@@ -797,9 +924,8 @@ export function drawYanColossus(c: C, phase: 'charge' | 'slash' | 'hole', progre
     c.save()
     c.translate(8, -26)
     c.globalAlpha = fadeOut * (phase === 'hole' ? 0.8 : 1)
-    brushArc(c, 64, -2.4, 1.0, 42, swing * 1.2, '#ffffff', 'rgba(34,31,51,.5)') // a white rim around the black
-    brushArc(c, 60, -2.4, 1.0, 30, swing * 1.25, INK)
-    brushArc(c, 44, -2.3, 0.9, 7, swing * 1.3, INK) // a second, thinner stroke trailing inside
+    bladeArc(c, 64, -2.4, 1.0, 38, Math.min(1, swing * 1.2), INK, 'rgba(90,80,130,.8)', '#4a4462')
+    bladeArc(c, 46, -2.3, 0.9, 8, Math.min(1, swing * 1.3), INK, 'rgba(90,80,130,.6)', '#4a4462') // a second, thinner cut inside
     c.restore()
   }
   c.translate(gx - 24, gy - 44)
@@ -817,61 +943,78 @@ export function drawYanColossus(c: C, phase: 'charge' | 'slash' | 'hole', progre
   c.restore()
 }
 
-// The cleave landing at (x, y), `time` seconds ago: a white flash, a towering stroke of black ink split by a white
-// cut, an ink blot cracking the ground and drops flung outward. Gone after about a second.
+// The cleave landing at (x, y), `time` seconds ago, painted onto the battlefield like a sumi-e scroll: a white
+// flash, a towering stroke of black ink split by a white cut, a huge bleeding ink blot, an ensō brushed round the
+// strike, ink-wash mountains rising behind it in the mist, and drops flung outward. The stroke is gone after about a
+// second; the painting lingers with the title and dissolves with it.
 export function drawYanCleave(c: C, x: number, y: number, facing: number, time: number) {
-  if (time > 1.1) return
+  if (time > K.title) return
+  const out = Math.min(1, (K.title - time) / 0.6)
   c.save()
   c.translate(x, y)
   c.lineCap = c.lineJoin = 'round'
+  // The landscape painting itself up behind the strike.
+  c.save()
+  c.translate(-facing * 20, -12)
+  c.globalAlpha = out
+  inkMountains(c, 320, 130, 7, (time - 0.12) / 0.6, '34,31,51')
+  c.restore()
   if (time < 0.2) {
     c.globalAlpha = (1 - time / 0.2) * 0.9
-    c.fillStyle = '#fffdf6'
+    c.fillStyle = PAPER
     c.beginPath()
     c.ellipse(0, -40, 40 + time * 400, 30 + time * 260, 0, 0, Math.PI * 2)
     c.fill()
   }
-  const fade = Math.min(1, (1.1 - time) / 0.6), spread = ease(time / 0.15)
-  c.globalAlpha = fade * 0.85
-  c.fillStyle = c.strokeStyle = INK
-  c.beginPath()
-  c.ellipse(0, 0, 90 * spread, 20 * spread, 0, 0, Math.PI * 2)
-  c.fill()
-  for (let k = 0; k < 10; k++) {
-    const a = k * 0.63 + 0.3, l = (60 + (k % 3) * 30) * spread, bend = (k % 2 ? 1 : -1) * 0.25
-    c.lineWidth = 2.5 - (k % 3) * 0.6
-    line(c, Math.cos(a) * 30 * spread, Math.sin(a) * 7 * spread, Math.cos(a + bend) * l * 0.65, Math.sin(a + bend) * l * 0.16,
-      Math.cos(a) * l, Math.sin(a) * l * 0.25)
-  }
+  // The blot where the blade struck, and the ensō brushed around it.
+  c.globalAlpha = out * 0.92
+  inkBlot(c, 72, 0.3, 11, ease(time / 0.14), INK, WASH)
+  c.save()
+  c.scale(1, 0.36)
+  c.globalAlpha = out * 0.85
+  brushArc(c, 112, facing > 0 ? 2.6 : 0.55, (facing > 0 ? 2.6 : 0.55) + Math.PI * 1.85, 10, ease((time - 0.05) / 0.35), INK)
+  c.restore()
   // The towering stroke, brushed top-down in an instant (t 0 at the top, 1 at the ground), then cut open.
-  const H = 190, sx = facing * 40, reveal = ease(time / 0.07), n = 20
-  const at = (t: number) => [sx * (1 - t), -H * (1 - t)]
-  const w = (t: number) => 26 * Math.sin(Math.PI * Math.min(1, t * 0.95 + 0.04)) ** 0.6 * (0.4 + t * 0.8)
-  c.globalAlpha = fade
-  c.beginPath()
-  for (let i = 0; i <= n; i++) {
-    const t = reveal * i / n, [px, py] = at(t)
-    if (i) c.lineTo(px - w(t) / 2, py)
-    else c.moveTo(px - w(t) / 2, py)
+  const fade = Math.min(1, (1.1 - time) / 0.6)
+  if (fade > 0) {
+    const H = 190, sx = facing * 40, reveal = ease(time / 0.07), n = 20
+    const at = (t: number) => [sx * (1 - t), -H * (1 - t)]
+    const w = (t: number) => 26 * Math.sin(Math.PI * Math.min(1, t * 0.95 + 0.04)) ** 0.6 * (0.4 + t * 0.8)
+    c.globalAlpha = fade
+    c.fillStyle = INK
+    c.beginPath()
+    for (let i = 0; i <= n; i++) {
+      const t = reveal * i / n, [px, py] = at(t)
+      if (i) c.lineTo(px - w(t) / 2, py)
+      else c.moveTo(px - w(t) / 2, py)
+    }
+    for (let i = n; i >= 0; i--) {
+      const t = reveal * i / n, [px, py] = at(t)
+      c.lineTo(px + w(t) / 2, py)
+    }
+    c.fill()
+    // Dry hairs splitting off the stroke's top.
+    c.strokeStyle = INK
+    c.lineWidth = 0.9
+    for (let k = 0; k < 5; k++) {
+      const [px, py] = at(0.02), off = (k - 2) * 3.5
+      line(c, px + off, py, px + off * 1.6 + sx * 0.08, py - 10 - (k % 2) * 8)
+    }
+    if (time > 0.08) {
+      const [ax, ay] = at(0.06), [bx, by] = at(0.06 + 0.9 * ease((time - 0.08) / 0.08))
+      c.strokeStyle = PAPER
+      c.lineWidth = 2.4
+      line(c, ax, ay, bx, by)
+    }
   }
-  for (let i = n; i >= 0; i--) {
-    const t = reveal * i / n, [px, py] = at(t)
-    c.lineTo(px + w(t) / 2, py)
-  }
-  c.fill()
-  if (time > 0.08) {
-    const [ax, ay] = at(0.06), [bx, by] = at(0.06 + 0.9 * ease((time - 0.08) / 0.08))
-    c.strokeStyle = '#fffdf6'
-    c.lineWidth = 2.4
-    line(c, ax, ay, bx, by)
-  }
-  for (let k = 0; k < 18; k++) {
-    const a = -Math.PI * (0.1 + 0.8 * ((k * 0.618) % 1)), v = 120 + (k % 5) * 45
+  // Drops flung high and falling back.
+  c.globalAlpha = out
+  c.fillStyle = INK
+  for (let k = 0; k < 22; k++) {
+    const a = -Math.PI * (0.08 + 0.84 * ((k * 0.618) % 1)), v = 120 + (k % 5) * 45
     const px = Math.cos(a) * v * time, py = Math.sin(a) * v * time + 260 * time * time - 10
     if (py > 0) continue // landed
-    c.beginPath()
-    c.arc(px, py, 3 - (k % 3) * 0.8, 0, Math.PI * 2)
-    c.fill()
+    drop(c, px, py, Math.atan2(Math.sin(a) * v + 520 * time, Math.cos(a) * v), 3 - (k % 3) * 0.8, 9)
   }
   c.restore()
 }
@@ -901,6 +1044,8 @@ export function drawYanTitle(c: C, x: number, y: number, time: number) {
     c.fillText(YAN_JIN_TITLE[i], 0, 0)
     c.restore()
   }
+  c.globalAlpha = out
+  sealStamp(c, x + ((n - 1) / 2 + 0.95) * size * 1.05, y + size * 0.25, size * 0.6, '劫', (time - n * 0.09 - 0.2) / 0.15)
   c.restore()
 }
 
@@ -915,80 +1060,91 @@ export function drawYanPlantedSword(c: C, x: number, y: number, size: number) {
   c.restore()
 }
 
-// The black hole `holeHeight` px above (x, y); `progress` 0..1 over its life. It opens, swirls ink in a
-// brushed accretion ring and draws streaks inward, growing heavier until it bursts.
+// The black hole `holeHeight` px above (x, y); `progress` 0..1 over its life. Ink wash swirls around it, drops of
+// ink are pulled in along spiralling paths, a brushed accretion ring of ink spins against a thin white one, and ink
+// drips from it, all growing heavier until it bursts.
 export function drawYanBlackHole(c: C, x: number, y: number, progress: number, tick: number) {
   const open = ease(progress / 0.25), r = (12 + 16 * progress) * open
   const shake = progress > 0.8 ? Math.sin(tick * 1.7) * (progress - 0.8) * 10 : 0
+  if (r <= 0.5) return
   c.save()
   c.translate(x + shake, y - K.holeHeight)
-  const halo = c.createRadialGradient(0, 0, r, 0, 0, r * 3.2)
-  halo.addColorStop(0, 'rgba(34,31,51,.45)')
-  halo.addColorStop(1, 'rgba(34,31,51,0)')
-  c.fillStyle = halo
-  c.beginPath()
-  c.arc(0, 0, r * 3.2, 0, Math.PI * 2)
-  c.fill()
-  // Streaks of ink being pulled in.
-  c.strokeStyle = INK
-  c.lineCap = 'round'
-  c.lineWidth = 1.2
-  for (let k = 0; k < 12; k++) {
-    const a = k * 0.52 + tick * 0.04, d = r * 1.3 + r * 2.2 * (1 - (tick * 0.025 + k * 0.083) % 1)
-    c.globalAlpha = 0.6 * open
-    line(c, Math.cos(a) * d, Math.sin(a) * d * 0.7, Math.cos(a + 0.35) * (d - 7), Math.sin(a + 0.35) * (d - 7) * 0.7)
+  // Swirling ink wash.
+  c.fillStyle = WASH
+  for (let k = 0; k < 3; k++) {
+    c.save()
+    c.rotate(tick * (0.02 + k * 0.012) + k * 2)
+    c.globalAlpha = 0.2 * open
+    blob(c, r * (2.2 + k * 0.5), 0.75, 13 + k * 4)
+    c.restore()
   }
-  // A spinning accretion ring of brushed ink.
+  // Drops of ink pulled in on spiralling paths.
+  c.fillStyle = INK
+  for (let k = 0; k < 14; k++) {
+    const t = (tick * 0.025 + k * 0.071) % 1, a = k * 0.45 + t * 2.4, d = r * 1.2 + r * 2.4 * (1 - t)
+    c.globalAlpha = 0.75 * open * Math.min(1, (1 - t) * 4)
+    drop(c, Math.cos(a) * d, Math.sin(a) * d * 0.7, a + Math.PI * 0.62, 1.6 + (k % 3) * 0.4, 7)
+  }
+  // The accretion ring: brushed ink spinning one way, a thin white stroke the other.
   for (let k = 0; k < 3; k++) {
     c.save()
     c.scale(1, 0.55)
     c.rotate(tick * 0.18 + k * 2.09)
-    c.globalAlpha = 0.8 * open
+    c.globalAlpha = 0.85 * open
     brushArc(c, r * 1.6, 0, 2.3, r * 0.5, 1, INK)
     c.restore()
   }
+  c.save()
+  c.scale(1, 0.55)
+  c.rotate(-tick * 0.12)
+  c.globalAlpha = 0.8 * open
+  brushArc(c, r * 2, 0, 2, 2.5, 1, '#ffffff', 'rgba(34,31,51,.5)')
+  c.restore()
   c.globalAlpha = open
   c.fillStyle = '#0d0b12'
-  c.beginPath()
-  c.arc(0, 0, r, 0, Math.PI * 2)
-  c.fill()
-  c.strokeStyle = '#fbf7ec'
+  blob(c, r, 1, Math.floor(tick / 6)) // its edge boils
+  c.strokeStyle = PAPER
   c.lineWidth = 1.5
   c.beginPath()
-  c.arc(0, 0, r + 1.5, 0, Math.PI * 2)
+  c.arc(0, 0, r + 2, 0, Math.PI * 2)
   c.stroke()
+  // Ink dripping from it.
+  c.fillStyle = INK
+  for (let k = 0; k < 4; k++) {
+    const t = (tick * 0.02 + k * 0.25) % 1
+    c.globalAlpha = open * (1 - t)
+    drop(c, (k - 1.5) * r * 0.45, r * 0.8 + t * t * 40, Math.PI / 2, 1.6, 6)
+  }
   c.restore()
 }
 
-// The black hole bursting at (x, y): a white flash, an ink shock ring racing across the ground, and spikes and
-// drops of ink thrown outward; `progress` 0..1.
+// The black hole bursting at (x, y): a white flash, an explosion of ink blooming where it hung, an ensō of ink
+// racing out across the ground and drops of ink thrown everywhere; `progress` 0..1. The blot it leaves on the
+// ground is drawYanInk.
 export function drawYanBurst(c: C, x: number, y: number, progress: number) {
   const p = progress, ring = 20 + p * K.radius * 1.1
   c.save()
   c.translate(x, y)
   c.globalAlpha = (1 - p) ** 2
-  c.fillStyle = '#fffdf6'
+  c.fillStyle = PAPER
   c.beginPath()
   c.arc(0, -K.holeHeight, 30 + p * 90, 0, Math.PI * 2)
   c.fill()
+  c.save()
+  c.translate(0, -K.holeHeight)
+  c.globalAlpha = (1 - p) ** 1.5
+  inkBlot(c, 34 + p * 26, 0.85, 5, ease(p / 0.12), INK, WASH)
+  c.restore()
+  c.save()
+  c.scale(1, 0.45)
   c.globalAlpha = 1 - p
-  c.strokeStyle = INK
-  c.lineWidth = 10 * (1 - p) + 1
-  c.beginPath()
-  c.ellipse(0, 0, ring, ring * 0.45, 0, 0, Math.PI * 2)
-  c.stroke()
-  c.lineCap = 'round'
-  for (let k = 0; k < 14; k++) {
-    const a = k * 0.45 + 0.2, from = 10 + p * 30, to = 24 + p * 110 * (0.6 + (k % 3) * 0.2)
-    c.lineWidth = (1 - p) * 6 + 0.5
-    line(c, Math.cos(a) * from, -K.holeHeight + Math.sin(a) * from * 0.8, Math.cos(a) * to, -K.holeHeight + Math.sin(a) * to * 0.8)
-  }
+  brushArc(c, ring, 0.4, 0.4 + Math.PI * 1.85, 12 * (1 - p) + 2, 1, INK)
+  c.restore()
+  c.globalAlpha = 1 - p
   c.fillStyle = INK
-  for (let k = 0; k < 10; k++) {
-    const a = k * 0.63 + 0.5, d = 30 + p * 140 * (0.5 + (k % 4) * 0.15)
-    c.beginPath()
-    c.arc(Math.cos(a) * d, -K.holeHeight + Math.sin(a) * d * 0.7 + p * p * 30, 2.2 - (k % 3) * 0.5, 0, Math.PI * 2)
-    c.fill()
+  for (let k = 0; k < 16; k++) {
+    const a = k * 0.39 + 0.2, d = 30 + p * 150 * (0.5 + (k % 4) * 0.15)
+    drop(c, Math.cos(a) * d, -K.holeHeight + Math.sin(a) * d * 0.7 + p * p * 30, a, 2.6 - (k % 3) * 0.6, 10 * (1 - p) + 3)
   }
   c.restore()
 }
@@ -1048,7 +1204,13 @@ export function drawYanWard(c: C, x: number, y: number, time: number, spin: numb
   c.lineWidth = 1.2
   c.stroke()
   c.globalAlpha = 1
-  if (r > 4) drawYang(c, 0, -r * 1.05 - 10, 7, tick * 0.03)
+  if (r > 4) {
+    c.save()
+    c.scale(1, 0.45)
+    brushArc(c, r + 5, tick * 0.01, tick * 0.01 + Math.PI * 1.85, 5, ease(time / 0.3), '#ffffff', 'rgba(34,31,51,.6)')
+    c.restore()
+    drawYang(c, 0, -r * 1.05 - 10, 7, tick * 0.03)
+  }
   if (spin !== null) {
     c.save()
     c.translate(0, -18)
@@ -1259,7 +1421,7 @@ export function drawYanDemonBlade(c: C, pose: DemonPose, progress: number, tick:
     const from = -1.9, to = 1.0, swing = 1 - (1 - Math.min(1, progress * 2.2)) ** 3
     c.save()
     c.globalAlpha = Math.max(0, 1 - Math.max(0, progress - 0.35) * 1.6)
-    brushArc(c, length - 1, from, to, 9, swing, D_RED, 'rgba(60,0,8,.6)')
+    bladeArc(c, length + 1, from, to, 10, swing + Math.max(0, progress - 0.45) * 1.6, D_RED, '#ff3a3a', '#ffb0a8')
     c.restore()
     c.rotate(from + (to - from) * swing)
   } else c.rotate(angle)
@@ -1303,7 +1465,7 @@ export function drawYanRamShield(c: C, tick: number) {
   c.restore()
 }
 
-// Red vapor boiling up around him, in sprite-local units; drawn behind the sprite. `strength` 0..1+.
+// Red ink smoke curling up around him, in sprite-local units; drawn behind the sprite. `strength` 0..1+.
 export function drawYanDemonAura(c: C, tick: number, strength: number) {
   if (strength <= 0) return
   c.save()
@@ -1314,45 +1476,57 @@ export function drawYanDemonAura(c: C, tick: number, strength: number) {
   c.beginPath()
   c.arc(0, -20, 34, 0, Math.PI * 2)
   c.fill()
-  for (let k = 0; k < 14; k++) {
-    const rise = (tick * 0.7 + k * 13) % 40, x = Math.sin(k * 2.3) * 14 + Math.sin((tick + k * 20) * 0.05) * 3
-    c.globalAlpha = Math.min(1, strength * 0.55 * (1 - rise / 40))
-    c.fillStyle = k % 3 ? '#e3202d' : '#ff7a6a'
+  c.lineCap = 'round'
+  for (let k = 0; k < 12; k++) {
+    const rise = (tick * 0.6 + k * 17) % 46, t = rise / 46, x = Math.sin(k * 2.3) * 13, curl = Math.sin(t * Math.PI * 2 + k) * 7
+    c.globalAlpha = Math.min(1, strength * 0.7 * (1 - t) * Math.min(1, t * 6))
+    c.strokeStyle = k % 3 ? D_RED : '#2b1114'
+    c.lineWidth = 3.6 - t * 2.6
     c.beginPath()
-    c.ellipse(x, -4 - rise, 2.5 + (k % 3), 4 + (k % 2) * 2, 0, 0, Math.PI * 2)
-    c.fill()
+    c.moveTo(x, -2 - rise)
+    c.quadraticCurveTo(x + curl, -10 - rise, x - curl * 0.6, -18 - rise)
+    c.stroke()
   }
   c.restore()
 }
 
-// The roar at his feet (x, y); `progress` 0..1: red shock rings racing out across the ground and vapor bursting up.
+// The roar at his feet (x, y); `progress` 0..1: broken ensō of red ink racing out across the ground, red drops and
+// dark ink flung outward, red smoke curling up. The blot under him is drawYanInk.
 export function drawYanRoar(c: C, x: number, y: number, progress: number) {
   const p = progress, D = YAN_DEMON
   c.save()
   c.translate(x, y)
-  c.strokeStyle = D_RED
   for (let k = 0; k < 3; k++) {
     const q = p * 1.6 - k * 0.25
     if (q <= 0 || q >= 1) continue
-    const ring = 20 + q * D.roarRadius * 1.3
-    c.globalAlpha = (1 - q) * 0.85
-    c.lineWidth = 7 * (1 - q) + 1
-    c.beginPath()
-    c.ellipse(0, 0, ring, ring * 0.45, 0, 0, Math.PI * 2)
-    c.stroke()
+    c.save()
+    c.scale(1, 0.45)
+    c.globalAlpha = (1 - q) * 0.9
+    brushArc(c, 20 + q * D.roarRadius * 1.3, k * 2.1, k * 2.1 + Math.PI * 1.7, 10 * (1 - q) + 2, 1, k === 1 ? '#2b1114' : D_RED)
+    c.restore()
   }
-  for (let k = 0; k < 16; k++) {
-    const a = k * 0.39, d = 18 + p * 70, rise = p * 70 * (0.6 + (k % 3) * 0.2)
+  for (let k = 0; k < 18; k++) {
+    const a = k * 0.35, d = 18 + p * (80 + (k % 4) * 14), lift = p * 50 * (0.6 + (k % 3) * 0.3) - p * p * 40
+    c.globalAlpha = 1 - p
+    c.fillStyle = k % 3 ? D_RED : '#2b1114'
+    drop(c, Math.cos(a) * d, Math.sin(a) * d * 0.45 - lift, Math.atan2(Math.sin(a) * 0.45 - 0.6 + p * 1.6, Math.cos(a)), 2.6 - (k % 3) * 0.5, 9)
+  }
+  c.lineCap = 'round'
+  for (let k = 0; k < 8; k++) {
+    const a = k * 0.8, d = 16 + p * 40, rise = p * 60, curl = Math.sin(p * 6 + k) * 8
     c.globalAlpha = (1 - p) * 0.6
-    c.fillStyle = k % 2 ? '#e3202d' : '#ff6a6a'
+    c.strokeStyle = k % 2 ? D_RED : '#ff6a6a'
+    c.lineWidth = 5 * (1 - p) + 1
     c.beginPath()
-    c.ellipse(Math.cos(a) * d, Math.sin(a) * d * 0.45 - rise * 0.5, 6 + (k % 4) * 2, 8 + (k % 3) * 3, 0, 0, Math.PI * 2)
-    c.fill()
+    c.moveTo(Math.cos(a) * d, Math.sin(a) * d * 0.45)
+    c.quadraticCurveTo(Math.cos(a) * d + curl, Math.sin(a) * d * 0.45 - rise * 0.5, Math.cos(a) * d - curl, Math.sin(a) * d * 0.45 - rise)
+    c.stroke()
   }
   c.restore()
 }
 
-// Ruin's cracks racing from the planted sword at (x, y) along (nx, ny), glowing red; `progress` 0..1 over the hold.
+// Ruin's cracks racing from the planted sword at (x, y) along (nx, ny): brushed strokes of black ink pressed
+// thick at the sword and tapering to hairlines, glowing red underneath; `progress` 0..1 over the hold.
 export function drawYanRuinCracks(c: C, x: number, y: number, nx: number, ny: number, progress: number) {
   const R = YAN_DEMON_RUIN, reach = 16 + (R.length - 16) * ease(progress)
   c.save()
@@ -1363,15 +1537,18 @@ export function drawYanRuinCracks(c: C, x: number, y: number, nx: number, ny: nu
       const along = 16 + (reach - 16) * i / 6, off = spread * i / 6 + (((i * 7 + k * 3) % 5) - 2) * 3
       points.push(x + nx * along - ny * off, y + ny * along + nx * off)
     }
-    c.strokeStyle = 'rgba(216,26,38,.45)'
-    c.lineWidth = 5
-    line(c, ...points)
-    c.strokeStyle = INK
-    c.lineWidth = 2
-    line(c, ...points)
-    c.strokeStyle = '#ff4a4a'
-    c.lineWidth = 0.8
-    line(c, ...points)
+    for (let i = 0; i < 6; i++) {
+      const taper = 1 - i / 6, seg = points.slice(i * 2, i * 2 + 4)
+      c.strokeStyle = 'rgba(216,26,38,.5)'
+      c.lineWidth = 9 * taper + 2
+      line(c, ...seg)
+      c.strokeStyle = INK
+      c.lineWidth = 4.5 * taper + 0.6
+      line(c, ...seg)
+      c.strokeStyle = '#ff4a4a'
+      c.lineWidth = 1.2 * taper + 0.3
+      line(c, ...seg)
+    }
   }
   c.restore()
 }
@@ -1394,22 +1571,33 @@ export function drawYanRuinEruption(c: C, x: number, y: number, nx: number, ny: 
     if (q <= 0 || fade <= 0) continue
     const h = (40 + (k % 4) * 18) * ease(q), w = 7 + (k % 3) * 3
     c.globalAlpha = fade
+    c.save()
+    c.translate(sx, sy)
+    inkBlot(c, w * 1.4, 0.4, k * 7 + 1, ease(q), D_RED, '#ff6a6a')
+    c.fillStyle = '#2b1114'
+    for (let d = 0; d < 3; d++) {
+      const a = -Math.PI / 2 + (d - 1) * 0.7, v = 30 + d * 8
+      drop(c, Math.cos(a) * v * q, -h * 0.8 + Math.sin(a) * v * q + 40 * q * q, Math.atan2(Math.sin(a) + 2 * q, Math.cos(a)), 1.6, 5)
+    }
+    c.restore()
     poly(c, '#2b1114', sx - w, sy, sx - w * 0.3, sy - h * 0.6, sx, sy - h, sx + w * 0.4, sy - h * 0.5, sx + w, sy)
   }
   c.restore()
 }
 
-// A red streak where he blinked from (x1, y1) to (x2, y2) (feet); `progress` 0..1.
+// A dry-brush streak of red ink where he blinked from (x1, y1) to (x2, y2) (feet), a dark core inside it and drops
+// shaken off its tail; `progress` 0..1.
 export function drawYanTrail(c: C, x1: number, y1: number, x2: number, y2: number, progress: number) {
+  const len = Math.hypot(x2 - x1, y2 - y1)
+  if (len < 1) return
   c.save()
-  c.lineCap = 'round'
+  c.translate(x2, y2 - 16)
+  c.rotate(Math.atan2(y2 - y1, x2 - x1))
   c.globalAlpha = 1 - progress
-  c.strokeStyle = 'rgba(216,26,38,.5)'
-  c.lineWidth = 12 * (1 - progress) + 2
-  line(c, x1, y1 - 16, x2, y2 - 16)
-  c.strokeStyle = '#2b1114'
-  c.lineWidth = 2
-  line(c, x1, y1 - 16, x2, y2 - 16)
+  dryStreak(c, len * 1.3, 12 * (1 - progress) + 3, D_RED)
+  dryStreak(c, len * 1.1, 4 * (1 - progress) + 1, '#2b1114')
+  c.fillStyle = D_RED
+  for (let k = 0; k < 4; k++) drop(c, -len * (0.3 + k * 0.2), (k % 2 ? 1 : -1) * (6 + progress * 10), Math.PI, 1.6, 4)
   c.restore()
 }
 
