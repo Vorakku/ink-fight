@@ -471,7 +471,8 @@ export const MENG_GOD = {
 export const MENG_GOD_TITLE = '神雷斩'
 
 const BRUSH_FONT = 'KaiTi, STKaiti, "Kaiti SC", "Noto Serif CJK SC", serif'
-const DOOR_W = 170, DOOR_H = 230, ARCH_R = DOOR_W / 2, SPRING = DOOR_H - ARCH_R // the smoke door, px
+const DOOR_W = 170, DOOR_H = 230, ARCH_R = DOOR_W / 2, SPRING = DOOR_H - ARCH_R // the fire door, px
+const FIRE = ['255,90,20', '255,170,40', '200,40,16', '255,210,90', '60,16,12'] // its fire puffs, red to gold with some smoke
 
 // A soft puff of smoke, ink unless `rgb` says otherwise.
 function puff(c: C, x: number, y: number, r: number, alpha: number, rgb = '18,16,24') {
@@ -517,11 +518,11 @@ function leafPath(c: C) {
   c.closePath()
 }
 
-// One eagle eye at (x, y) on the left leaf, its hooked inner corner toward the seam (+x): an ink lid and heavy brow,
-// the eye opening `open` (0..1) from shut (a thread of light between the lids), filled with nothing but blue-white
-// light, no iris or pupil;
-// `flare` throws a light trail off its outer corner.
-function eagleEye(c: C, x: number, y: number, open: number, flare: number) {
+// One blazing eye at (x, y) on the left leaf, its hooked inner corner toward the seam (+x): a glowing blue rim and a
+// sweeping brow of blue fire, the eye opening `open` (0..1) from shut (a thread of light between the lids), filled
+// with nothing but blue-white light, no iris or pupil. Blue fire streams off its outer corner up and out, longer
+// as it opens; `flare` throws it further.
+function eagleEye(c: C, x: number, y: number, open: number, flare: number, tick: number) {
   const lid = () => {
     c.beginPath()
     c.moveTo(-17, -4)
@@ -534,19 +535,22 @@ function eagleEye(c: C, x: number, y: number, open: number, flare: number) {
   c.save()
   c.translate(x, y)
   c.rotate(0.2) // the inner corner dips toward the seam: a glare
-  if (flare > 0) {
+  const reach = Math.max(flare, open * 0.75)
+  if (reach > 0) for (let k = 0; k < 3; k++) { // blue fire tongues streaming off the outer corner, up and out
+    const len = (40 + 16 * k) * reach, wave = Math.sin(tick * 0.12 + k * 2) * 4
     c.save()
-    c.globalAlpha *= flare
+    c.globalAlpha *= reach * (1 - k * 0.25)
     c.shadowColor = '#4dc8ff'
     c.shadowBlur = 14
-    const trail = c.createLinearGradient(-17, 0, -17 - 46 * flare, 0)
+    const trail = c.createLinearGradient(-15, 0, -15 - len, -len * 0.7)
     trail.addColorStop(0, '#e8faff')
-    trail.addColorStop(1, 'rgba(80,180,255,0)')
+    trail.addColorStop(0.4, '#5ab4ff')
+    trail.addColorStop(1, 'rgba(40,80,255,0)')
     c.fillStyle = trail
     c.beginPath()
-    c.moveTo(-15, -6)
-    c.lineTo(-17 - 46 * flare, -9 - 6 * flare)
-    c.lineTo(-15, -1)
+    c.moveTo(-14, -7 + k * 2)
+    c.quadraticCurveTo(-15 - len * 0.5, -6 - len * 0.2 + wave - k * 4, -15 - len, -len * 0.7 - k * 6 + wave)
+    c.quadraticCurveTo(-15 - len * 0.45, -len * 0.15 + wave + k * 3, -14, 0 + k)
     c.fill()
     c.restore()
   }
@@ -573,29 +577,34 @@ function eagleEye(c: C, x: number, y: number, open: number, flare: number) {
   lid()
   c.fill()
   c.restore()
-  c.strokeStyle = INK
+  c.strokeStyle = '#2a4cff'
+  c.shadowColor = '#4dc8ff'
+  c.shadowBlur = 8
   c.lineWidth = 2.2
   lid()
   c.stroke()
   c.restore()
-  // The heavy brow ridge, lit pale blue once the eye opens.
-  c.lineWidth = 3.4
-  c.strokeStyle = INK
+  // The brow: a tapered sweep of blue fire over the eye, rising toward its outer corner, blazing once it opens.
+  c.shadowColor = '#4dc8ff'
+  c.shadowBlur = 10 * open
+  const brow = c.createLinearGradient(18, 0, -30, 0)
+  brow.addColorStop(0, '#1a2a8a')
+  brow.addColorStop(1, open > 0 ? '#9fe0ff' : '#1a2a8a')
+  c.fillStyle = brow
   c.beginPath()
-  c.moveTo(-20, -9)
-  c.quadraticCurveTo(-2, -17, 18, -2)
-  c.stroke()
-  c.globalAlpha *= open
-  c.strokeStyle = '#9fe0ff'
-  c.lineWidth = 1
-  c.stroke()
+  c.moveTo(18, -3)
+  c.quadraticCurveTo(-2, -18, -32, -22)
+  c.quadraticCurveTo(-4, -13, 18, -3)
+  c.fill()
   c.restore()
 }
 
-// Behind him, at the ground point (x, y) under him `time` s into the ultimate: black smoke rises off the ground and
-// climbs, a billowing front, into a tall arched double door of nothing but smoke, no frame, smoke curling up its
-// sides, a gold-to-orange gradient glowing along its edges and down the seam where its leaves meet. Big eagle eyes
-// appear shut on its leaves, then open on blue-white light; the leaves swing apart (squashing toward their hinges) and gold light floods out
+// Behind him, at the ground point (x, y) under him `time` s into the ultimate: fire rises off the ground and climbs,
+// a billowing front, into a tall arched double door that is a colossal face of fire and lightning: deep blue leaves
+// fading to embers, veined with flame, a fire spiral on each side of the forehead, flame wings sweeping up and out
+// from its sides, lightning crackling through the fire, and light glowing blue to orange along its edges and seam.
+// Big blazing eyes appear shut on its leaves under brows of blue fire, with a blue flame on the seam between them,
+// then open on blue-white light streaming blue fire; the leaves swing apart (squashing toward their hinges) and gold light floods out
 // onto his lightning god, seated behind it and towering over it. From `fade` it all dissolves into smoke. In front
 // of the door, under him while he hovers `lift` px up: a gold ring, falling ink motes, and his sash and hair lifting.
 export function drawMengGod(c: C, x: number, y: number, time: number, tick: number, lift: number) {
@@ -617,11 +626,32 @@ export function drawMengGod(c: C, x: number, y: number, time: number, tick: numb
       c.rect(-DOOR_W, front, DOOR_W * 2, DOOR_H + 60)
       c.clip()
     }
-    // Black smoke curling up its sides and off its base the whole time it stands.
-    for (let i = 0; i < 16; i++) {
-      const u = (tick * 0.008 + rand(i, 31)) % 1, side = i % 2 ? 1 : -1
-      const sx = i < 12 ? side * (ARCH_R + rand(i, 32) * 26) : (rand(i, 32) - 0.5) * DOOR_W
-      puff(c, sx + Math.sin(u * 6 + i) * 6, 6 - u * (DOOR_H + 40) * Math.max(rise, 0.3), 8 + u * 18, 0.4 * Math.sin(u * Math.PI) * Math.min(1, form * 3))
+    // Fire boiling up its sides and off its base the whole time it stands, red and orange with darker smoke.
+    for (let i = 0; i < 24; i++) {
+      const u = (tick * 0.01 + rand(i, 31)) % 1, side = i % 2 ? 1 : -1
+      const sx = i < 18 ? side * (ARCH_R + rand(i, 32) * 40) : (rand(i, 32) - 0.5) * DOOR_W
+      puff(c, sx + Math.sin(u * 6 + i) * 6, 6 - u * (DOOR_H + 40) * Math.max(rise, 0.3), 10 + u * 20,
+        0.5 * Math.sin(u * Math.PI) * Math.min(1, form * 3), FIRE[i % FIRE.length])
+    }
+    // Flame wings sweeping up and out from its sides past the top of the arch, orange outside, blue along the rim.
+    const wings = ease((form - 0.3) / 0.7) * (1 - gone)
+    if (wings > 0) for (const side of [-1, 1]) for (let k = 0; k < 3; k++) {
+      const sway = Math.sin(tick * 0.05 + k * 1.3 + side) * 6, reach = (1 - k * 0.22) * wings
+      const x0 = side * (ARCH_R - 4), y0 = -SPRING * (0.15 + k * 0.25)
+      const tx = side * (ARCH_R + 70 + 20 * k) * reach + sway, ty = -DOOR_H - (40 - 10 * k) * reach + sway
+      const wing = c.createLinearGradient(x0, y0, tx, ty)
+      wing.addColorStop(0, 'rgba(255,90,20,.9)')
+      wing.addColorStop(0.6, 'rgba(255,190,50,.75)')
+      wing.addColorStop(1, 'rgba(255,240,170,0)')
+      c.fillStyle = wing
+      c.beginPath()
+      c.moveTo(x0, y0)
+      c.quadraticCurveTo(side * (ARCH_R + 50) * reach, y0 - 40, tx, ty)
+      c.quadraticCurveTo(side * (ARCH_R + 10), y0 - 70 * reach, x0, y0 - 30)
+      c.fill()
+      c.strokeStyle = `rgba(110,170,255,${0.8 * reach})` // the blue inner rim
+      c.lineWidth = 2
+      c.stroke()
     }
     // The light inside, the god behind it, and the light pouring out onto the ground.
     if (open > 0) {
@@ -644,7 +674,7 @@ export function drawMengGod(c: C, x: number, y: number, time: number, tick: numb
       c.ellipse(0, 10, DOOR_W * open, 30, 0, 0, Math.PI * 2)
       c.fill()
     }
-    // The two leaves, nothing but black smoke, narrowing toward their hinges as they swing open. No frame.
+    // The two leaves, the dark of the face, deep blue fading to embers at the base, narrowing toward their hinges as they swing open. No frame.
     const squash = 1 - 0.88 * open
     const leaf = (side: number) => { // the left leaf as is, the right one mirrored
       c.scale(-side, 1)
@@ -659,11 +689,32 @@ export function drawMengGod(c: C, x: number, y: number, time: number, tick: numb
       leaf(side)
       c.globalAlpha = 0.9 * solid
       const ink = c.createLinearGradient(0, -DOOR_H, 0, 0)
-      ink.addColorStop(0, '#121019')
-      ink.addColorStop(1, '#262130')
+      ink.addColorStop(0, '#080a24')
+      ink.addColorStop(0.55, '#1a1450')
+      ink.addColorStop(1, '#5a1608')
       c.fillStyle = ink
       leafPath(c)
       c.fill()
+      // Orange flame veins curling up through it, and a fire spiral on the forehead above the eye.
+      c.globalAlpha = solid
+      c.strokeStyle = '#ff7a24'
+      c.shadowColor = '#ff5a10'
+      c.shadowBlur = 8
+      c.lineWidth = 2
+      for (let k = 0; k < 4; k++) {
+        const vx = -ARCH_R + 18 + k * 16, wave = Math.sin(tick * 0.06 + k) * 4
+        c.beginPath()
+        c.moveTo(vx, -10)
+        c.bezierCurveTo(vx + 14 + wave, -SPRING * 0.4, vx - 10 - wave, -SPRING * 0.7, vx + 8, -SPRING * (0.9 - k * 0.04))
+        c.stroke()
+      }
+      c.lineWidth = 2.6
+      c.beginPath()
+      for (let a = 0; a < Math.PI * 4; a += 0.2) { // a spiral of fire, clear of the seam and the brow
+        const r = 2 + a * 1.4
+        c.lineTo(-24 + Math.cos(a + tick * 0.03) * r, -SPRING - 52 + Math.sin(a + tick * 0.03) * r)
+      }
+      c.stroke()
       c.restore()
     }
     c.restore()
@@ -684,13 +735,13 @@ export function drawMengGod(c: C, x: number, y: number, time: number, tick: numb
       const drift = Math.sin(tick * 0.03 + i) * 2 + Math.sin(p * Math.PI) * (rand(i, 5) - 0.5) * 50 // swirling as it climbs
       const px = sx + (tx - sx) * p + drift + (rand(i, 6) - 0.5) * 60 * gone
       const py = sy + (ty - sy) * p - gone * (30 + 50 * rand(i, 7))
-      puff(c, px, py, (i < 48 ? 10 : 15) + rand(i, 8) * 8 + gone * 12, 0.55 * p)
+      puff(c, px, py, (i < 48 ? 10 : 15) + rand(i, 8) * 8 + gone * 12, 0.55 * p, i < 48 ? FIRE[i % FIRE.length] : '14,14,44')
     }
-    // The rising front: a billowing band of smoke climbing up it.
+    // The rising front: a billowing band of fire climbing up it.
     const climbing = 1 - ease((form - 0.85) / 0.15)
     if (climbing > 0) for (let i = 0; i < 13; i++) {
       const fx = -ARCH_R - 20 + (DOOR_W + 40) * i / 12, fy = front + Math.sin(tick * 0.08 + i * 1.7) * 6
-      puff(c, fx, fy, 16 + rand(i, 41) * 10, 0.6 * climbing)
+      puff(c, fx, fy, 16 + rand(i, 41) * 10, 0.6 * climbing, FIRE[i % FIRE.length])
     }
     // The eyes, one on each leaf, on top of the smoke: shut as the door finishes forming, then opening wide.
     const shown = ease((form - 0.6) / 0.4) * (1 - gone)
@@ -700,13 +751,31 @@ export function drawMengGod(c: C, x: number, y: number, time: number, tick: numb
       c.globalAlpha = shown
       c.translate(-41, -SPRING + 4)
       c.scale(2.1, 2.1) // big, filling the top of the leaf
-      eagleEye(c, 0, 0, eyes, flare)
+      eagleEye(c, 0, 0, eyes, flare, tick)
+      c.restore()
+    }
+    // A blue flame burning on the seam between the eyes, white at its heart, guttering out as the leaves part.
+    const third = shown * (1 - open)
+    if (third > 0) {
+      const fy = -SPRING + 20, h = 46 + Math.sin(tick * 0.2) * 5
+      c.save()
+      c.globalAlpha = third
+      c.shadowColor = '#4dc8ff'
+      c.shadowBlur = 18
+      for (const [w, color] of [[11, '#2a6cff'], [5, '#bfeaff'], [2, '#ffffff']] as const) {
+        c.fillStyle = color
+        c.beginPath()
+        c.moveTo(0, fy - h * (w / 11 * 0.4 + 0.6))
+        c.quadraticCurveTo(w, fy - h * 0.3, 0, fy + w)
+        c.quadraticCurveTo(-w, fy - h * 0.3, 0, fy - h * (w / 11 * 0.4 + 0.6))
+        c.fill()
+      }
       c.restore()
     }
     c.save()
     belowFront()
-    // Wisps curling off its edges.
-    c.strokeStyle = 'rgba(30,26,40,.5)'
+    // Fire wisps curling off its edges.
+    c.strokeStyle = 'rgba(255,120,30,.7)'
     c.lineWidth = 2
     for (let k = 0; k < 9; k++) {
       const u = (tick * 0.006 + rand(k, 9)) % 1, [wx, wy] = archPoint(rand(k, 10)), out = wx < 0 ? -1 : 1
@@ -718,14 +787,16 @@ export function drawMengGod(c: C, x: number, y: number, time: number, tick: numb
       c.stroke()
     }
     c.globalAlpha = 1
-    // Gold glowing along its edges and down the seam where the leaves meet, in a gradient from pale gold to orange.
+    // Light glowing along its edges and down the seam where the leaves meet: electric blue over the brow, burning
+    // to gold and orange toward the base.
     c.globalAlpha = ease((form - 0.5) / 0.5) * (1 - gone)
     const edge = c.createLinearGradient(0, -DOOR_H, 0, 0)
-    edge.addColorStop(0, '#fff1a8')
-    edge.addColorStop(0.5, '#ffb020')
+    edge.addColorStop(0, '#bfeaff')
+    edge.addColorStop(0.3, '#3a7cff')
+    edge.addColorStop(0.65, '#ffb020')
     edge.addColorStop(1, '#ff5a1e')
     c.strokeStyle = edge
-    c.shadowColor = '#ffa020'
+    c.shadowColor = '#ff8a20'
     c.shadowBlur = 16
     c.lineWidth = 2.6
     archPath(c)
@@ -740,6 +811,18 @@ export function drawMengGod(c: C, x: number, y: number, time: number, tick: numb
       c.restore()
     }
     c.restore() // below the front
+    // Lightning crackling up through the fire at its sides, each bolt flickering on and off.
+    c.shadowColor = '#ffd23a'
+    c.shadowBlur = 10
+    for (let k = 0; k < 6; k++) {
+      const seed = k * 7 + Math.floor(tick / 5), side = k % 2 ? 1 : -1
+      if (rand(seed, 51) < 0.45) continue
+      const bx = side * (ARCH_R + 6 + rand(seed, 52) * 50), by = -rand(seed, 53) * SPRING
+      c.save()
+      c.globalAlpha = ease((form - 0.5) / 0.5) * (1 - gone) * 0.85
+      jagged(c, bx, by, bx + side * (20 + rand(seed, 54) * 40), by - 30 - rand(seed, 55) * 60, seed, 14, 1.6)
+      c.restore()
+    }
     // Shafts of light thrown out of the opening.
     if (open > 0) {
       c.globalCompositeOperation = 'lighter'
@@ -1952,6 +2035,7 @@ const GOLD = '#f2c230', GOLD_DARK = '#c98f1a', GOLD_PALE = '#fff1a8', LEAF = '#5
 const TEAL = '#2fb3a6', CYAN = '#3fd6ff', JADE = '#2fd27a', JADE_PALE = '#b4ffc8', PAPER = '#fbf7ec'
 const SEAL = '#d8452f', FADE = 0.5, UNROLL = 0.5, HALF = 20 // the painting's half-height
 const LIFT = 18 // the effect floats at body height above the ground line
+const WIDE = 3 // how much wider than drawn the slashes and painting appear across the cut (looks only, not the hit width)
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 export const ease = (t: number) => 1 - (1 - clamp01(t)) ** 3
 const rand = (i: number, k: number) => { const s = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return s - Math.floor(s) }
@@ -2052,13 +2136,13 @@ function ribbon(c: C, from: number, to: number, v0: number, amp: number, wave: n
 // The autumn-wind painting along the cut, `t` seconds after the dash, painted straight onto the battlefield:
 // it spreads from the start of the cut to its end, plays, then dissolves.
 function drawPainting(c: C, x1: number, y1: number, x2: number, y2: number, t: number, tick: number) {
-  const L = Math.hypot(x2 - x1, y2 - y1), fade = clamp01((MENG_BREEZE.paint - t) / FADE)
+  const L = Math.hypot(x2 - x1, y2 - y1) / WIDE, fade = clamp01((MENG_BREEZE.paint - t) / FADE) // L in painting units
   const flip = x2 < x1 ? -1 : 1 // keeps the painting's top up when he dashes left
   const open = L * ease(t / UNROLL), scene = fade * ease((t - 0.1) / 0.4)
   c.save()
   c.translate(x1, y1 - LIFT)
   c.rotate(Math.atan2(y2 - y1, x2 - x1))
-  c.scale(1, flip)
+  c.scale(WIDE, flip * WIDE)
   c.lineCap = c.lineJoin = 'round'
   // Pale autumn sun.
   if (L * 0.72 < open) {
@@ -2214,20 +2298,20 @@ const PALETTES = [[SILK, CYAN, GOLD], [JADE, JADE_PALE, SILK_PALE], [GOLD_DARK, 
 function breezeStrokes(x1: number, y1: number, x2: number, y2: number, curve: number) {
   const L = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / L, uy = (y2 - y1) / L, angle = Math.atan2(uy, ux)
   const seed = Math.round(x1 * 3.1 + y1 * 7.7), size = Math.min(1.3, 0.6 + L / 300), up = ux >= 0 ? -1 : 1 // bows upward on screen
-  const strokes: Stroke[] = [{ ax: x1 - ux * 14, ay: y1 - uy * 14, bx: x2 + ux * 18, by: y2 + uy * 18, w: 8, bend: 0.14 * up * curve, start: 0,
+  const strokes: Stroke[] = [{ ax: x1 - ux * 14, ay: y1 - uy * 14, bx: x2 + ux * 18, by: y2 + uy * 18, w: 8 * WIDE, bend: 0.14 * up * curve, start: 0,
     dark: SILK, light: CYAN, ghost: GOLD, seed }]
   for (let i = 0; i < 5; i++) {
-    const r = (k: number) => rand(seed + i * 13, k), s = 0.15 + 0.7 * r(1), off = (r(2) - 0.5) * 16
+    const r = (k: number) => rand(seed + i * 13, k), s = 0.15 + 0.7 * r(1), off = (r(2) - 0.5) * 16 * WIDE
     const cx = x1 + ux * L * s - uy * off, cy = y1 + uy * L * s + ux * off
-    const a = angle + (i % 2 ? 1 : -1) * (0.35 + r(3) * 0.85), half = (26 + r(4) * 26) * size
+    const a = angle + (i % 2 ? 1 : -1) * (0.35 + r(3) * 0.85), half = (26 + r(4) * 26) * size * WIDE
     const [dark, light, ghost] = PALETTES[(i + 1) % PALETTES.length]
     strokes.push({ ax: cx - Math.cos(a) * half, ay: cy - Math.sin(a) * half, bx: cx + Math.cos(a) * half, by: cy + Math.sin(a) * half,
-      w: 3 + r(5) * 3, bend: (i % 2 ? 1 : -1) * (0.18 + r(6) * 0.2) * curve, start: 0.06 + i * 0.07, dark, light, ghost, seed: seed + i * 13 })
+      w: (3 + r(5) * 3) * WIDE, bend: (i % 2 ? 1 : -1) * (0.18 + r(6) * 0.2) * curve, start: 0.06 + i * 0.07, dark, light, ghost, seed: seed + i * 13 })
   }
   for (const [k, tilt] of [[0, 0.12], [1, -0.09]] as const) {
-    const a = angle + tilt, half = L / 2 + 40, cx = (x1 + x2) / 2, cy = (y1 + y2) / 2 + (k ? 6 : -6)
+    const a = angle + tilt, half = L / 2 + 40, cx = (x1 + x2) / 2, cy = (y1 + y2) / 2 + (k ? 6 : -6) * WIDE
     strokes.push({ ax: cx - Math.cos(a) * half, ay: cy - Math.sin(a) * half, bx: cx + Math.cos(a) * half, by: cy + Math.sin(a) * half,
-      w: 1.4, bend: 0.06 * up * curve, start: 0.4 + k * 0.07, dark: GLOW_PALE, light: '#ffffff', ghost: CYAN, seed: seed + 97 + k })
+      w: 1.4 * WIDE, bend: 0.06 * up * curve, start: 0.4 + k * 0.07, dark: GLOW_PALE, light: '#ffffff', ghost: CYAN, seed: seed + 97 + k })
   }
   return strokes
 }
@@ -2288,7 +2372,7 @@ function shards(c: C, st: Stroke, age: number) {
   c.strokeStyle = INK
   for (let k = 0; k < 6; k++) {
     const r = (n: number) => rand(st.seed + k * 7, n), side = r(2) < 0.5 ? -1 : 1, speed = 40 + r(3) * 50
-    const travel = speed * age * (1 - age / (life * 2)), size = (1.5 + r(4) * 2) * (st.w > 2 ? 1 : 0.6)
+    const travel = speed * age * (1 - age / (life * 2)), size = (1.5 + r(4) * 2) * (st.w > 2 * WIDE ? 1 : 0.6) * WIDE
     const [x, y] = at(r(1), side * travel, travel * 0.4)
     c.save()
     c.translate(x, y)
@@ -2785,8 +2869,8 @@ const shaSlash = (ax: number, ay: number, bx: number, by: number, w: number, ben
 
 // One punch in sprite-local units (feet at 0,0, facing right), `progress` 0..1 over MENG_PUNCH_LIFE, `k` the punch's
 // number (left and right fists curve opposite ways): a black ink brush stroke drawn after the fist along a curved path,
-// pressed thick at the fist and tapering behind it into split dry hairs, with drops flicked off its bend; the sha
-// colour stains its head. The colour splash itself is drawMengSha, thrown from the fist. The heavy straight's stroke is
+// pressed thick at the fist and tapering behind it into split dry hairs, with drops flicked off its bend; a painted
+// fist of the sha colour rides its head. The heavy straight's stroke and fist are
 // longer and heavier.
 export const MENG_PUNCH_LIFE = 0.45 // how long a punch's ink stroke stays on the field
 
@@ -2836,16 +2920,6 @@ export function drawMengPunch(c: C, progress: number, color: string, heavy: bool
     }
     c.stroke()
   }
-  // The colour staining the stroke's head, where it meets the fist.
-  const [hx, hy] = at(head)
-  c.fillStyle = color === INK ? '#4a4462' : color
-  c.beginPath()
-  c.ellipse(hx - 2, hy, W * 0.9, W * 0.55, 0, 0, Math.PI * 2)
-  c.fill()
-  if (shaLight(color)) {
-    c.lineWidth = 0.6
-    c.stroke()
-  }
   // Drops flicked off the bend.
   c.fillStyle = INK
   for (let d = 0; d < 3; d++) {
@@ -2855,12 +2929,272 @@ export function drawMengPunch(c: C, progress: number, color: string, heavy: bool
     c.arc(x + nx * side * fling, y + ny * side * fling, 0.9 - d * 0.2, 0, Math.PI * 2)
     c.fill()
   }
+  // The sha fist riding the stroke's head, knuckles along its direction of travel, wreathed in its demon aura.
+  const [hx, hy] = at(head), [tx, ty] = normal(head), size = heavy ? 1.35 : 1
+  c.translate(hx, hy)
+  c.rotate(Math.atan2(-tx, ty))
+  demonAura(c, color, size, progress * MENG_PUNCH_LIFE, k * 7.3, 0.4 + 0.6 * ease(progress * 6))
+  glowingFist(c, color, size)
   c.restore()
 }
 
 // Seven Sha Fists (七煞拳), his first skill here: an enemy `min`..`range` px away makes him rush at it at `speed` px/s,
 // then throw `count` punches `interval` s apart, one per sha colour, for `damage` each, and end in a burst of all seven
 // colours: `burstDamage` and `burstKnockback` to every enemy within `burstRadius`. He holds the follow-through `burst` s.
+// Demon Assault (body form): he stands and machine-guns his punches, `count` sha fists flying at the target one every
+// `interval` s, each fanned up to `spread` radians off the aim and hitting the first enemy on its way.
+export const MENG_ASSAULT = {
+  min: 30, range: 230, count: 16, interval: 0.09, speed: 560, spread: 0.18, damage: 9, knockback: 40, reach: 10,
+  recover: 0.2, cooldown: 9,
+} as const
+
+// ---- The sha fist: what every body-form punch throws ----
+
+export const SHA_FIST_LIFE = 0.32 // how long a fist's burst lasts where a punch lands
+
+const shaFill = (color: string) => color === INK ? '#4a4462' : color
+
+// A clenched fist in sha colour pointing along +x, knuckles forward, about 16 px long at `s` 1: the back of the hand,
+// four knuckles, the thumb folded across, ink-outlined with a pale shine.
+function shaFistGlyph(c: C, color: string, s: number) {
+  const fill = shaFill(color), pale = shaPale(color)
+  c.save()
+  c.scale(s, s)
+  c.lineJoin = c.lineCap = 'round'
+  c.strokeStyle = INK
+  c.lineWidth = 1.1
+  const g = c.createLinearGradient(0, -7, 0, 7)
+  g.addColorStop(0, pale)
+  g.addColorStop(0.55, fill)
+  g.addColorStop(1, fill)
+  c.fillStyle = g
+  c.beginPath() // the back of the hand
+  c.moveTo(-8, -5)
+  c.quadraticCurveTo(-1, -7.5, 4, -6)
+  c.lineTo(4, 6)
+  c.quadraticCurveTo(-1, 7.2, -8, 5)
+  c.closePath()
+  c.fill()
+  c.stroke()
+  for (let i = 0; i < 4; i++) { // knuckles
+    c.beginPath()
+    c.ellipse(5, -4.5 + i * 3, 2.6, 1.75, 0, 0, Math.PI * 2)
+    c.fill()
+    c.stroke()
+  }
+  c.beginPath() // the thumb folded across the fingers
+  c.moveTo(-3, 6)
+  c.quadraticCurveTo(1.5, 3.5, 5.5, 4.2)
+  c.lineWidth = 2.6
+  c.stroke()
+  c.strokeStyle = fill
+  c.lineWidth = 1.2
+  c.stroke()
+  c.strokeStyle = INK
+  c.lineWidth = 0.7
+  for (let i = 0; i < 3; i++) { const y = -3 + i * 3; c.beginPath(); c.moveTo(0.5, y); c.lineTo(3.4, y); c.stroke() } // finger creases
+  c.strokeStyle = 'rgba(255,255,255,.75)'
+  c.lineWidth = 1
+  c.beginPath()
+  c.moveTo(-6, -4)
+  c.quadraticCurveTo(-1, -5.8, 3, -4.8)
+  c.stroke()
+  c.fillStyle = GOLD // a gold wrist band
+  c.strokeStyle = INK
+  c.lineWidth = 0.9
+  c.beginPath()
+  c.moveTo(-8, -5)
+  c.lineTo(-10.5, -4.4)
+  c.lineTo(-10.5, 4.4)
+  c.lineTo(-8, 5)
+  c.closePath()
+  c.fill()
+  c.stroke()
+  c.restore()
+}
+
+// The demon aura round a fist at the origin pointing +x, in its sha colour, `s` its scale and `t` seconds of
+// flicker: a glow, flame tongues licking back off it edged in ink, two horn flames curling back above and below
+// round a shadowy demon mask with glowing eyes, and embers trailing off. Drawn under the fist.
+function demonAura(c: C, color: string, s: number, t: number, seed: number, alpha = 1) {
+  const fill = shaFill(color), pale = color === INK ? '#b9a8e0' : shaPale(color), flame = color === INK ? '#4a3a6a' : fill
+  c.save()
+  c.scale(s, s)
+  c.globalAlpha *= alpha
+  c.lineJoin = c.lineCap = 'round'
+  const glow = c.createRadialGradient(-2, 0, 0, -2, 0, 20) // the glow
+  glow.addColorStop(0, pale)
+  glow.addColorStop(0.45, color === MENG_SHA[6] ? 'rgba(255,255,255,.5)' : fill)
+  glow.addColorStop(1, 'rgba(255,255,255,0)')
+  const base = c.globalAlpha
+  c.globalAlpha = base * 0.55
+  c.fillStyle = glow
+  c.beginPath()
+  c.arc(-2, 0, 20, 0, Math.PI * 2)
+  c.fill()
+  c.globalAlpha = base * 0.5 // the demon mask behind: a horned shadow with two glowing eyes
+  c.fillStyle = INK
+  c.beginPath()
+  c.moveTo(-4, -9)
+  c.quadraticCurveTo(-16, -15, -24, -16) // top horn
+  c.quadraticCurveTo(-18, -9, -17, -5)
+  c.quadraticCurveTo(-22, 0, -17, 5)
+  c.quadraticCurveTo(-18, 9, -24, 16) // bottom horn
+  c.quadraticCurveTo(-16, 15, -4, 9)
+  c.closePath()
+  c.fill()
+  c.globalAlpha = base * (0.75 + 0.25 * Math.sin(t * 30 + seed))
+  c.fillStyle = pale
+  c.shadowColor = pale
+  c.shadowBlur = 6
+  for (const y of [-3.2, 3.2]) {
+    c.beginPath()
+    c.moveTo(-13, y - 1.1)
+    c.lineTo(-9, y)
+    c.lineTo(-13, y + 1.1)
+    c.closePath()
+    c.fill()
+  }
+  c.shadowBlur = 0
+  // Flame tongues licking back and out, flickering.
+  for (let i = 0; i < 7; i++) {
+    const spread = (i - 3) / 3, wave = Math.sin(t * 24 + i * 1.7 + seed), len = 16 + rand(seed, i) * 12 + wave * 3
+    const y0 = spread * 6, y1 = spread * (12 + rand(seed, i + 7) * 6) + wave * 2.5, w = 2.6 - Math.abs(spread)
+    const tx = -6 - len, cx = -6 - len * 0.5, cy = (y0 + y1) / 2 + wave * 3
+    c.globalAlpha = base * 0.9
+    c.beginPath()
+    c.moveTo(-4, y0 - w)
+    c.quadraticCurveTo(cx, cy - w * 1.6, tx, y1)
+    c.quadraticCurveTo(cx, cy + w * 1.6, -4, y0 + w)
+    c.closePath()
+    c.fillStyle = i % 2 ? flame : pale
+    c.fill()
+    c.strokeStyle = INK
+    c.lineWidth = 0.45
+    c.globalAlpha = base * 0.6
+    c.stroke()
+  }
+  // Horn flames curling back off the top and bottom of the fist.
+  for (const side of [-1, 1]) {
+    const flick = Math.sin(t * 18 + side + seed) * 1.5
+    c.globalAlpha = base
+    c.beginPath()
+    c.moveTo(2, side * 5)
+    c.quadraticCurveTo(-6, side * (14 + flick), -15, side * (17 + flick))
+    c.quadraticCurveTo(-8, side * (10 + flick), -3, side * 7.5)
+    c.closePath()
+    c.fillStyle = flame
+    c.fill()
+    c.strokeStyle = INK
+    c.lineWidth = 0.6
+    c.stroke()
+  }
+  c.fillStyle = pale // embers trailing off
+  for (let i = 0; i < 5; i++) {
+    const drift = (t * 2.2 + rand(seed, i + 20)) % 1
+    c.globalAlpha = base * (1 - drift)
+    c.beginPath()
+    c.arc(-10 - drift * 22, (rand(seed, i + 30) - 0.5) * 18 - drift * 4, 0.9 * (1 - drift * 0.5), 0, Math.PI * 2)
+    c.fill()
+  }
+  c.restore()
+}
+
+// The fist itself with a soft glow of its colour round it.
+function glowingFist(c: C, color: string, s: number) {
+  c.save()
+  c.shadowColor = color === INK ? '#b9a8e0' : shaPale(color)
+  c.shadowBlur = 9 * s
+  shaFistGlyph(c, color, s)
+  c.restore()
+}
+
+// Speed strokes streaming back from a fist at the origin (pointing +x): ink brush lines with a sha wash under them.
+function fistStreaks(c: C, color: string, s: number, seed: number, alpha: number) {
+  c.save()
+  c.lineCap = 'round'
+  for (let i = 0; i < 4; i++) {
+    const y = (i - 1.5) * 4.2 * s + (rand(seed, i) - 0.5) * 2, len = (16 + rand(seed, i + 4) * 18) * s, x0 = -9 * s
+    c.globalAlpha = alpha * 0.45
+    c.strokeStyle = shaStroke(color)
+    c.lineWidth = 3.4 * s
+    c.beginPath(); c.moveTo(x0, y); c.lineTo(x0 - len, y); c.stroke()
+    c.globalAlpha = alpha
+    c.strokeStyle = INK
+    c.lineWidth = 0.8 * s
+    c.beginPath(); c.moveTo(x0 - 2, y); c.lineTo(x0 - len * 0.8, y + (rand(seed, i + 8) - 0.5) * 1.5); c.stroke()
+  }
+  c.restore()
+}
+
+// A flying sha fist at (x, y) heading along `angle` (Demon Assault's shots), with its streaks; `time` in seconds flickers its aura.
+export function drawShaFistShot(c: C, x: number, y: number, angle: number, color: string, seed: number, time: number) {
+  c.save()
+  c.translate(x, y)
+  c.rotate(angle)
+  if (Math.cos(angle) < 0) c.scale(1, -1) // thumb stays underneath
+  fistStreaks(c, color, 0.85, seed, 0.9)
+  demonAura(c, color, 0.75, time, seed)
+  glowingFist(c, color, 0.85)
+  c.restore()
+}
+
+// Where a punch lands at (x, y), thrown along `angle`, `age` s old: a ragged splash of the colour, tapered rays of
+// colour edged in ink, ink drops thrown out, and the fist's print swelling and fading. `size` scales it.
+export function drawShaFist(c: C, x: number, y: number, angle: number, color: string, age: number, seed: number, size = 1) {
+  const flip = Math.cos(angle) < 0 ? -1 : 1, b = clamp01(age / SHA_FIST_LIFE)
+  if (b >= 1) return
+  const out = 1 - b, pop = ease(b / 0.35), S = 12 * size
+  c.save()
+  c.translate(x, y)
+  c.lineJoin = c.lineCap = 'round'
+  // The splash: a ragged blob of the colour, edged in ink.
+  c.globalAlpha = out * 0.85
+  c.fillStyle = shaFill(color)
+  c.beginPath()
+  for (let i = 0; i <= 14; i++) {
+    const a = i / 14 * Math.PI * 2, r = S * pop * (0.65 + rand(seed, i % 14) * 0.5)
+    if (i) c.lineTo(Math.cos(a) * r, Math.sin(a) * r * 0.8)
+    else c.moveTo(Math.cos(a) * r, Math.sin(a) * r * 0.8)
+  }
+  c.closePath()
+  c.fill()
+  c.strokeStyle = INK
+  c.lineWidth = 0.9
+  c.stroke()
+  // Rays: tapered brush spikes of colour bursting out, mostly forward along the punch.
+  for (let i = 0; i < 8; i++) {
+    const a = angle + (i - 3.5) / 3.5 * 1.5 + (rand(seed, i + 20) - 0.5) * 0.3
+    const r0 = S * 0.5 * pop, r1 = S * (1.2 + rand(seed, i + 30) * 1.1) * ease(b / 0.25), w = S * 0.16
+    const px = -Math.sin(a), py = Math.cos(a)
+    c.beginPath()
+    c.moveTo(Math.cos(a) * r0 + px * w, Math.sin(a) * r0 + py * w)
+    c.lineTo(Math.cos(a) * r1, Math.sin(a) * r1)
+    c.lineTo(Math.cos(a) * r0 - px * w, Math.sin(a) * r0 - py * w)
+    c.closePath()
+    c.globalAlpha = out
+    c.fillStyle = i % 3 ? shaFill(color) : shaPale(color)
+    c.fill()
+    c.lineWidth = 0.7
+    c.stroke()
+  }
+  // Ink drops thrown out.
+  c.fillStyle = INK
+  for (let i = 0; i < 5; i++) {
+    const a = angle + (rand(seed, i + 40) - 0.5) * 2.4, d = S * (0.8 + b * 1.6 + rand(seed, i + 50))
+    c.globalAlpha = out
+    c.beginPath()
+    c.arc(Math.cos(a) * d, Math.sin(a) * d, 1.3 * (1 - b * 0.6), 0, Math.PI * 2)
+    c.fill()
+  }
+  // The fist's print swelling and fading at the heart of it.
+  c.rotate(angle)
+  c.scale(1, flip)
+  c.globalAlpha = out * out
+  shaFistGlyph(c, color, size * (1 + b * 0.7))
+  c.restore()
+}
+
 export const MENG_FISTS = {
   min: 1, range: 250, speed: 950, count: 7, interval: 0.06, damage: 7, burstDamage: 12, burstRadius: 50, burstKnockback: 260,
   burst: 0.5, cooldown: 7,

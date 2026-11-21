@@ -8,11 +8,12 @@ import { buildSirenSprite, SIREN } from './siren.ts'
 import { buildNinjaSprite, NINJA } from './ninja.ts'
 import { buildSpartanSprite, SPARTAN } from './spartan.ts'
 import { buildCavalryFootSprite, buildCavalryFrames, buildCavalrySprite, CAVALRY } from './cavalry.ts'
+import { buildLuiFengFrames, buildLuiFengPoses, buildLuiFengSprite, LUI_FENG } from './luifeng.ts'
 import { buildMantisSprite, buildMantisShedSprite, MANTIS, type MantisForm } from './mantis.ts'
 import { buildZombieSprite, buildZombieVariant, ZOMBIE } from './zombie.ts'
 import { buildVampireSprite, VAMPIRE } from './vampire.ts'
 import { buildSwordSaintSprite, SWORD_SAINT } from './swordsaint.ts'
-import { buildKunlunSprite, KUNLUN } from './kunlun.ts'
+import { buildKunlunGhost, buildKunlunSprite, KUNLUN } from './kunlun.ts'
 import { buildYanDemonSprite, buildYanJinSprite, YAN_JIN } from './yanjin.ts'
 import { buildMengChuanSprite, buildMengDevilSprite, MENG_CHUAN, MENG_DEVIL } from './mengchuan.ts'
 import { buildFoxSpiritSprite, buildMeiSprite, MEI_SPIRIT, MEI_YUANZHI } from './meiyuanzhi.ts'
@@ -40,6 +41,7 @@ export const UNITS = {
   'mei-fox': { ...MEI_SPIRIT, buildSprite: buildFoxSpiritSprite },
   yanjin: { ...YAN_JIN, scare: 0, buildSprite: buildYanJinSprite },
   mengchuan: { ...MENG_CHUAN, scare: 0, buildSprite: buildMengChuanSprite },
+  luifeng: { ...LUI_FENG, scare: 0, buildSprite: buildLuiFengSprite },
   'meng-devil': { ...MENG_DEVIL, buildSprite: buildMengDevilSprite },
   ant: { ...ANT, scare: 0, buildSprite: buildAntSprite },
   anthill: { ...ANTHILL, scare: 0, buildSprite: buildAnthillSprite },
@@ -51,15 +53,39 @@ export const UNITS = {
   'dragon-egg': { ...DRAGON_EGG, scare: 0, buildSprite: buildDragonEggSprite },
 } as const
 export type Species = keyof typeof UNITS
-export const CHARACTERS = ['goose', 'thor', 'rex', 'phoenix', 'dragon', 'siren', 'ninja', 'zombie', 'vampire', 'ant', 'spartan', 'mantis', 'swordsaint', 'kunlun', 'meiyuanzhi', 'cavalry', 'yanjin', 'mengchuan'] as const
+export const CHARACTERS = ['goose', 'thor', 'rex', 'phoenix', 'dragon', 'siren', 'ninja', 'zombie', 'vampire', 'ant', 'spartan', 'mantis', 'swordsaint', 'kunlun', 'meiyuanzhi', 'cavalry', 'yanjin', 'mengchuan', 'luifeng'] as const
 export const CATEGORIES = ['Food', 'Animals', 'Prehistoric', 'People', 'Mythical', 'Water', 'Bug', 'Hero', 'Miscellaneous'] as const
 export type Category = (typeof CATEGORIES)[number]
 export const CHARACTER_CATEGORIES: Record<(typeof CHARACTERS)[number], Category> = {
   goose: 'Animals', rex: 'Prehistoric', ninja: 'People', phoenix: 'Mythical', dragon: 'Mythical',
   siren: 'Water', ant: 'Bug', thor: 'Hero', zombie: 'Miscellaneous', vampire: 'Miscellaneous',
   spartan: 'People', cavalry: 'People',
-  mantis: 'Bug', swordsaint: 'Hero', kunlun: 'Hero', meiyuanzhi: 'Hero', yanjin: 'Hero', mengchuan: 'Hero',
+  mantis: 'Bug', swordsaint: 'Hero', kunlun: 'Hero', meiyuanzhi: 'Hero', yanjin: 'Hero', mengchuan: 'Hero', luifeng: 'Hero',
 }
+// Forms the tray can place a fighter in, in the order Battle.applyVariant expects; `species` swaps in another unit.
+export const VARIANTS: Partial<Record<(typeof CHARACTERS)[number], { name: string; species?: Species }[]>> = {
+  dragon: DRAGON_FORMS.map(({ name }) => ({ name })),
+  phoenix: PHOENIX_FORMS.map(({ name }) => ({ name })),
+  rex: [{ name: TREX.name }, { name: 'Alpha' }, { name: 'Black' }],
+  mantis: [{ name: MANTIS.name }, { name: 'Blades' }, { name: 'Wings' }, { name: 'Hunter' }],
+  ant: (['ant', 'ant-tank', 'ant-slasher', 'ant-fly', 'ant-queen', 'anthill'] as const).map((species) => ({ name: UNITS[species].name, species })),
+  swordsaint: [{ name: SWORD_SAINT.name }, { name: 'Lightning Bamboo' }],
+  meiyuanzhi: [{ name: MEI_YUANZHI.name }, { name: 'Nine-Tailed Fox' }, { name: 'Fox Spirits' }],
+  yanjin: [{ name: YAN_JIN.name }, { name: 'Demon' }],
+  mengchuan: [{ name: MENG_CHUAN.name }, { name: 'Divine-Demon' }, { name: 'Thunder Saint' }, { name: 'Devil Saint' }],
+}
+
+export function variantSprite(sprites: Sprites, species: keyof typeof VARIANTS, variant: number) {
+  const other = VARIANTS[species]?.[variant]?.species, p = sprites[species].ffa
+  if (other) return sprites[other].ffa.ready
+  if (!variant) return p.ready
+  return species === 'dragon' ? p.dragon![variant].ready : species === 'phoenix' ? p.phoenix!.forms[variant].ready
+    : species === 'mantis' ? p.mantis![variant].ready : species === 'rex' ? (variant === 1 ? p.rexAlpha! : p.rexBlack!).ready
+    : species === 'swordsaint' ? p.saint!.bamboo.stand : species === 'meiyuanzhi' ? p.mei!.fox.ready
+    : species === 'yanjin' ? p.yan!.demon.ready : species === 'mengchuan' && variant < 3 ? (variant === 1 ? p.meng!.body : p.meng!.thunder).ready
+    : p.ready
+}
+
 export const SPECIES: Species[] = [...CHARACTERS, 'anthill', 'ant-queen', 'ant-tank', 'ant-slasher', 'ant-fly', 'dragon-nest', 'dragon-egg', 'rex-egg', 'mei-fox', 'meng-devil']
 
 type RexVariant = {
@@ -87,6 +113,7 @@ type Poses = {
   saint?: SaintPoses & { bamboo: SaintPoses & { ready: HTMLCanvasElement } }
   mei?: { meditate: HTMLCanvasElement; throwFront: HTMLCanvasElement; throwBack: HTMLCanvasElement
     fox: { ready: HTMLCanvasElement; meditate: HTMLCanvasElement; throwFront: HTMLCanvasElement; throwBack: HTMLCanvasElement; shocked: HTMLCanvasElement } }
+  kunlun?: { raise: HTMLCanvasElement; point: HTMLCanvasElement; slash: HTMLCanvasElement; ghost: HTMLCanvasElement }
   mantis?: { ready: HTMLCanvasElement; strike: HTMLCanvasElement; carry: HTMLCanvasElement; hop: HTMLCanvasElement;
     guard: HTMLCanvasElement; shocked: HTMLCanvasElement; zombie: HTMLCanvasElement; shockedZombie: HTMLCanvasElement;
     shed: HTMLCanvasElement }[]
@@ -99,6 +126,7 @@ type Poses = {
   }
   // Unhorsed cavalry reuse the Spartan knife slot so shocked/zombie/corpse drawing works unchanged.
   cavalry?: { frames: HTMLCanvasElement[][]; foot: NonNullable<Poses['spartan']>['knife'] }
+  lui?: ReturnType<typeof buildLuiFengPoses>
   rex?: ReturnType<typeof buildRexParts>
   rexAlpha?: RexVariant
   rexBlack?: RexVariant
@@ -196,8 +224,8 @@ export function buildSprites(): Sprites {
       const color = team === 'ffa' ? undefined : TEAM_COLORS[team]
       const ready = UNITS[species].buildSprite(color)
       const empty = species === 'thor' ? buildThorSprite(color, 'empty') : ready
-      const headX = species === 'mei-fox' ? 37 : species === 'cavalry' ? 22 : species === 'ant' || species.startsWith('ant-') ? 35 : species === 'mantis' ? 30 : species === 'spartan' ? 29 : species === 'vampire' ? 28 : species === 'ninja' || species === 'zombie' ? 24 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' ? 25 : species === 'siren' ? 26 : species === 'rex' ? 32 : 34
-      const headY = species === 'mei-fox' ? 23 : species === 'cavalry' ? 6 : species === 'ant' || species.startsWith('ant-') ? 26 : species === 'zombie' || species === 'spartan' || species === 'mantis' ? 14 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' || species === 'siren' ? 13 : species === 'rex' || species === 'dragon' ? 11 : species === 'phoenix' || species === 'ninja' || species === 'vampire' ? 15 : 12
+      const headX = species === 'mei-fox' ? 37 : species === 'cavalry' || species === 'luifeng' ? 22 : species === 'ant' || species.startsWith('ant-') ? 35 : species === 'mantis' ? 30 : species === 'spartan' ? 29 : species === 'vampire' ? 28 : species === 'ninja' || species === 'zombie' ? 24 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' ? 25 : species === 'siren' ? 26 : species === 'rex' ? 32 : 34
+      const headY = species === 'mei-fox' ? 23 : species === 'luifeng' ? 10 : species === 'cavalry' ? 6 : species === 'ant' || species.startsWith('ant-') ? 26 : species === 'zombie' || species === 'spartan' || species === 'mantis' ? 14 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' || species === 'siren' ? 13 : species === 'rex' || species === 'dragon' ? 11 : species === 'phoenix' || species === 'ninja' || species === 'vampire' ? 15 : 12
       const shocked = buildShockedSprite(ready, headX, headY)
       const undead = species === 'zombie' ? ready : buildZombieVariant(empty)
       const undeadChick = species === 'phoenix' ? buildZombieVariant(buildPhoenixSprite(color, 'chick')) : undefined
@@ -272,6 +300,8 @@ export function buildSprites(): Sprites {
               throwFront: buildMeiSprite(color, 'throwFront', undefined, true),
               throwBack: buildMeiSprite(color, 'throwBack', undefined, true), shocked: buildShockedSprite(ready, 25, 13) }
           })() } : undefined,
+        kunlun: species === 'kunlun' ? { raise: buildKunlunSprite(color, 'raise'), point: buildKunlunSprite(color, 'point'),
+          slash: buildKunlunSprite(color, 'slash'), ghost: buildKunlunGhost(ready) } : undefined,
         mantis: species === 'mantis' ? Array.from({ length: 4 }, (_, index) => {
           const form = index as MantisForm, ready = buildMantisSprite(color, 'ready', form), zombie = buildZombieVariant(ready)
           const carry = buildMantisSprite(color, 'carry', form), guard = buildMantisSprite(color, 'guard', form)
@@ -302,12 +332,13 @@ export function buildSprites(): Sprites {
               bash: buildSpartanSprite(color, 'bash', 'knife'), guard: walking('guard', 'knife', false),
               shocked: buildShockedSprite(knife, 29, 14), zombie, shockedZombie: buildShockedSprite(zombie, 29, 14) } }
         })() : undefined,
-        cavalry: species === 'cavalry' ? (() => {
+        cavalry: species === 'cavalry' || species === 'luifeng' ? (() => {
           const foot = buildCavalryFootSprite(color), poke = buildCavalryFootSprite(color, 'poke'), zombie = buildZombieVariant(foot)
           walks(foot, (step) => buildCavalryFootSprite(color, 'ready', step), zombie)
-          return { frames: buildCavalryFrames(color), foot: { ready: foot, poke, bash: poke, guard: foot,
+          return { frames: species === 'luifeng' ? buildLuiFengFrames(color) : buildCavalryFrames(color), foot: { ready: foot, poke, bash: poke, guard: foot,
             shocked: buildShockedSprite(foot, 24, 14), zombie, shockedZombie: buildShockedSprite(zombie, 24, 14) } }
         })() : undefined,
+        lui: species === 'luifeng' ? buildLuiFengPoses(color) : undefined,
         rex: species === 'rex' ? rexParts(color) : undefined,
         rexAlpha: species === 'rex' ? buildRexVariant(color, 1) : undefined,
         rexBlack: species === 'rex' ? buildRexVariant(color, 2) : undefined,

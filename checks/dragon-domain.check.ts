@@ -48,6 +48,7 @@ for (const form of [0, 1, 2] as const) {
   assert.equal(dragon.dragonDomainUsed, true)
   advance(battle, 20)
   assert.ok(dragon.elevation > 0, 'The opening takes the caster into the air')
+  assert.equal((battle as unknown as { hit(t: Fighter, d: number): boolean }).hit(dragon, 50), false, 'The cast is immune')
   assert.equal(dragon.dragonDomain!.sealed, false)
   const domain = seal(battle, dragon)
   assert.equal(domain.radius, DRAGON_DOMAIN.radius)

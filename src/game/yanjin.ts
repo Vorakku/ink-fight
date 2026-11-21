@@ -15,7 +15,8 @@ export const YAN_JIN = {
 // greatsword for `windup`, slams, and pauses for `recover`.
 export const YAN_JIN_COMBO = { slices: 3, interval: 0.1, lunge: 110, windup: 0.28, recover: 0.6 } as const
 // The slam lands `reach` px in front of him and hits grounded enemies within `radius` for `damage`,
-// throwing them `height` px up for `air` seconds; they land with a `stun`. The crack lasts `crater` seconds.
+// throwing them `height` px up for `air` seconds. His basic combo's slam lands them free to fight back; other knock-ups
+// that reuse these numbers land with a `stun`. The crack lasts `crater` seconds.
 export const YAN_JIN_SLAM = { reach: 16, radius: 72, damage: 52, knockback: 60, air: 0.75, height: 46, stun: 0.4, crater: 3 } as const
 // Tempest Slash: a target between `min` and `range` px away makes him cut a white crescent that flies at `speed` px/s
 // for `life` seconds, passing through enemies: each within `radius` px of it takes `damage` and is knocked back at

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Battle, DT, MAX_FIGHTERS, renderBattle, TEAM_COLORS, type Team } from './game/battle.ts'
-import { buildSprites, CATEGORIES, CHARACTER_CATEGORIES, CHARACTERS, SPECIES, UNITS, type Category, type Species } from './game/units.ts'
+import { buildSprites, CATEGORIES, CHARACTER_CATEGORIES, CHARACTERS, SPECIES, UNITS, VARIANTS, variantSprite, type Category, type Species } from './game/units.ts'
 import { buildTowerIcon, buildTreeIcon, buildWaterIcon, TOWER_SPACING, TREE_SPACING, WATER_SPACING } from './game/terrain.ts'
 import { createSpartanAudio } from './game/spartan-audio.ts'
 
@@ -14,7 +14,7 @@ type BattleState = 'running' | 'paused'
 type TerrainBrush = 'water' | 'tower' | 'tree'
 type Brush = Species | TerrainBrush
 const CHARACTER_TABS = CATEGORIES.filter((category) => CHARACTERS.some((species) => CHARACTER_CATEGORIES[species] === category))
-const EMPTY_COUNTS = { red: 0, blue: 0, ffa: 0, goose: 0, thor: 0, rex: 0, phoenix: 0, dragon: 0, siren: 0, ninja: 0, spartan: 0, cavalry: 0, mantis: 0, zombie: 0, vampire: 0, swordsaint: 0, kunlun: 0, meiyuanzhi: 0, yanjin: 0, mengchuan: 0, ant: 0, anthill: 0, 'ant-queen': 0, 'ant-tank': 0, 'ant-slasher': 0, 'ant-fly': 0, 'dragon-nest': 0, 'dragon-egg': 0, 'rex-egg': 0, 'mei-fox': 0, 'meng-devil': 0 }
+const EMPTY_COUNTS = { red: 0, blue: 0, ffa: 0, goose: 0, thor: 0, rex: 0, phoenix: 0, dragon: 0, siren: 0, ninja: 0, spartan: 0, cavalry: 0, mantis: 0, zombie: 0, vampire: 0, swordsaint: 0, kunlun: 0, meiyuanzhi: 0, yanjin: 0, mengchuan: 0, luifeng: 0, ant: 0, anthill: 0, 'ant-queen': 0, 'ant-tank': 0, 'ant-slasher': 0, 'ant-fly': 0, 'dragon-nest': 0, 'dragon-egg': 0, 'rex-egg': 0, 'mei-fox': 0, 'meng-devil': 0 }
 
 export default function App() {
   const [team, setTeam] = useState<Team>('ffa')
@@ -24,19 +24,29 @@ export default function App() {
   const [character, setCharacter] = useState<(typeof CHARACTERS)[number]>('goose')
   const [terrain, setTerrain] = useState<TerrainBrush>('water')
   const selected: Brush = category === 'terrain' ? terrain : character
+  const [variants, setVariants] = useState<Partial<Record<(typeof CHARACTERS)[number], number>>>({})
+  const variant = variants[character] ?? 0
+  const unit: Species = VARIANTS[character]?.[variant]?.species ?? character
   const [icons, setIcons] = useState<Partial<Record<Brush, string>>>({})
+  const [variantIcons, setVariantIcons] = useState<Partial<Record<keyof typeof VARIANTS, string[]>>>({})
   const [counts, setCounts] = useState(EMPTY_COUNTS)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const trayRef = useRef<HTMLElement>(null)
+  const [trayShown, setTrayShown] = useState(true)
   const teamRef = useRef(team)
   const stateRef = useRef(battleState)
   const selectedRef = useRef(selected)
+  const unitRef = useRef(unit)
+  const variantRef = useRef(variant)
   const strokeRef = useRef<{ id: number; x: number; y: number } | null>(null)
 
   useEffect(() => {
     teamRef.current = team
     stateRef.current = battleState
     selectedRef.current = selected
-  }, [team, battleState, selected])
+    unitRef.current = unit
+    variantRef.current = variant
+  }, [team, battleState, selected, unit, variant])
 
   useEffect(() => {
     const canvas = canvasRef.current!
@@ -52,6 +62,8 @@ export default function App() {
       tower: buildTowerIcon().toDataURL(),
       tree: buildTreeIcon().toDataURL(),
     })
+    setVariantIcons(Object.fromEntries(Object.entries(VARIANTS).map(([species, list]) => [species,
+      list.map((_, k) => variantSprite(sprites, species as keyof typeof VARIANTS, k).toDataURL())])))
     let dpr = 1
     const resize = () => {
       dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -68,7 +80,7 @@ export default function App() {
         if (brush === 'water') battle.water.paint(x, y)
         else if (brush === 'tower') battle.placeTower(x, y)
         else if (brush === 'tree') battle.placeTree(x, y)
-        else battle.spawn(x, y, teamRef.current, brush)
+        else battle.spawn(x, y, teamRef.current, unitRef.current, false, variantRef.current)
       }
     }
     const down = (event: PointerEvent) => {
@@ -87,7 +99,7 @@ export default function App() {
       let dx = x - stroke.x, dy = y - stroke.y, distance = Math.hypot(dx, dy)
       const brush = selectedRef.current
       const spacing = brush === 'water' ? WATER_SPACING : brush === 'tower' ? TOWER_SPACING
-        : brush === 'tree' ? TREE_SPACING : UNITS[brush].spacing
+        : brush === 'tree' ? TREE_SPACING : UNITS[unitRef.current].spacing
       while (distance >= spacing) {
         stroke.x += dx / distance * spacing
         stroke.y += dy / distance * spacing
@@ -169,6 +181,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', keydown)
   }, [])
 
+  // With a mouse, the tray fades away so it never covers the fight, and comes back when the mouse nears the bottom.
+  useEffect(() => {
+    if (!window.matchMedia('(hover: hover)').matches) return // touch screens keep it
+    const move = (event: PointerEvent) => {
+      if (event.pointerType !== 'mouse') return
+      const top = trayRef.current?.getBoundingClientRect().top ?? window.innerHeight
+      setTrayShown(event.clientY >= top - 60)
+    }
+    window.addEventListener('pointermove', move)
+    return () => window.removeEventListener('pointermove', move)
+  }, [])
+
   const total = counts.red + counts.blue + counts.ffa
 
   return (
@@ -183,13 +207,13 @@ export default function App() {
           ? 'Battlefield. Click or drag to place tall towers, or press Enter to place one in the centre.'
           : selected === 'tree'
           ? 'Battlefield. Click or drag to plant trees, or press Enter to plant one in the centre.'
-          : `Battlefield. Click or drag to place ${UNITS[selected].name}, or press Enter to place one in the centre.`}
+          : `Battlefield. Click or drag to place ${VARIANTS[character]?.[variant]?.name ?? UNITS[unit].name}, or press Enter to place one in the centre.`}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.repeat) {
             if (selected === 'water') battle.water.paint(battle.width / 2, battle.height / 2)
             else if (selected === 'tower') battle.placeTower(battle.width / 2, battle.height / 2)
             else if (selected === 'tree') battle.placeTree(battle.width / 2, battle.height / 2)
-            else battle.spawn(battle.width / 2, battle.height / 2, team, selected)
+            else battle.spawn(battle.width / 2, battle.height / 2, team, unit, false, variant)
           }
         }}
       />
@@ -242,7 +266,7 @@ export default function App() {
         </ul>
       )}
 
-      <nav className="tray" aria-label="Characters and terrain">
+      <nav ref={trayRef} className={trayShown ? 'tray' : 'tray tucked'} aria-label="Characters and terrain">
         <div className="categories" role="group" aria-label="Category">
           {CHARACTER_TABS.map((tab) => (
             <button key={tab} aria-pressed={category === tab} onClick={() => {
@@ -299,6 +323,20 @@ export default function App() {
             </>
           )}
         </div>
+        {category !== 'terrain' && VARIANTS[character] && (
+          <div className="variants" role="group" aria-label={`${UNITS[character].name} form`}>
+            {VARIANTS[character].map((option, k) => (
+              <button
+                key={option.name}
+                aria-pressed={variant === k}
+                onClick={() => { setVariants((chosen) => ({ ...chosen, [character]: k })); canvasRef.current?.focus() }}
+              >
+                {variantIcons[character]?.[k] && <img src={variantIcons[character][k]} alt="" />}
+                {option.name}
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
     </main>
   )

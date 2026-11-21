@@ -1,6 +1,6 @@
 // Run only with the owner's permission: node checks/nest-bloodlust.check.ts
 import assert from 'node:assert/strict'
-import { Battle, DT, MAX_FIGHTERS } from '../src/game/battle.ts'
+import { Battle, DT, MAX_FIGHTERS, type Fighter } from '../src/game/battle.ts'
 import { CHARACTERS, type Team } from '../src/game/units.ts'
 import { DRAGON_NEST } from '../src/game/dragon.ts'
 import { TREX_ALPHA, TREX_BLACK, TREX_BLOODLUST } from '../src/game/rex.ts'
@@ -61,6 +61,7 @@ for (const team of ['red', 'blue', 'ffa'] as const) {
   battle.step()
   assert.ok(rex.rexBloodlustCall > 0)
   assert.ok(rex.roar > 0)
+  assert.equal((battle as unknown as { hit(t: Fighter, d: number): boolean }).hit(rex, 50), false, 'The scream is immune')
   assert.equal(rex.rexBloodlust, false)
   assert.equal(helpers(battle, rex).length, 0, 'Helpers wait until the scream finishes')
   finishCall(battle)

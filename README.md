@@ -7,6 +7,11 @@ A fresh starting point for Inkfight, keeping the notebook page and basic control
   Arms), People (No Thanks, Spartan, Cavalry), Mythical (Encore, Scorch), Water (Coral Chorus), Bug
   (Ant, Praying Mantis), Hero (Thor, Sword Saint, Mei Yuanzhi), and Miscellaneous (Zombie, Count Chomp). Terrain keeps its
   own tab. Number shortcuts select the fighter and open its category.
+- Picking a fighter that has forms shows a row of them under the tray; new fighters start in
+  the chosen one at its full health: dragon (up to the golden Super Dragon), phoenix, Tiny Arms
+  (Alpha, Black), mantis (Blades, Wings, Hunter), every ant caste and the anthill, and the hero
+  transformations (Sword Saint's bamboo, Mei's fox and spirits, Yan Jin's demon, Meng Chuan's
+  three). Forms are listed in `VARIANTS` (`units.ts`) and applied by `Battle.applyVariant`.
 - Mei Yuanzhi, a calm cultivator with long dark hair, a grey layered robe, purple vest and red
   sash, throws purple talisman bombs with alternating hands (front hand straight forward,
   back hand swung up and over, each released from that hand): 580 HP, 115 px/s, 280 px range, one every 0.7 seconds.
@@ -54,6 +59,24 @@ A fresh starting point for Inkfight, keeping the notebook page and basic control
   immune), leaving a glowing purple trail. From the last point he throws a big talisman into the centre;
   0.35 seconds later it explodes: every enemy within 150 px takes 70 damage, knockback, a 1.2-second stun and
   a purple burn. Tuning: `MEI_STAR`.
+- Kunlun Legend, a lightning swordsman who spams skills: 1150 HP, 165 px/s, a 40-damage swing every 0.45 s.
+  Before his first fight he raises his great blade and blue lightning charges it; from then on every plain hit also
+  zaps for 20 and a short stun. With no enemy around and hurt, he meditates and heals 50 HP per second. Each time his
+  swing is ready he tries, in order: Thunder Shield (below 80% health: lightning strikes him and a crackling dome cuts
+  enemy damage by 60% for 6 seconds, 9-second cooldown), Lightning Step (a target within 150 px, 7-second cooldown:
+  he laps round it twice in a second, untouchable and trailing afterimages and a lightning ring, dashes through it
+  with a 50-damage slice, then lightning strikes it four times for 35 each), Lightning Clones (18-second cooldown:
+  lightning hits four spots round him; he reappears at one and three clones at the others, and enemies within 220 px
+  are dazed for a second and lose track of him; clones have 120 HP, hit at 20% strength, use his kit except walls,
+  Lightning Step, Thunder Shield and more clones, flicker, and fade without a body after 8 seconds or when he falls), Thunder Dive (front flip
+  onto a target 60–220 px away, immune in the air, slamming down a lightning strike: 75 damage and a small knock-up
+  within 85 px), Crescent Slash (a blue crescent wave flying 200 px: 55 damage, hard knockback), Spark Sway (five
+  sparks circle him, then fly as homing bolts at up to five enemies for 35 each), Heaven Strike (instant lightning
+  on any target in sight: 60 damage and a stun, 30 to others within 45 px) and Storm Spin (lightning strikes him:
+  double speed for 6 seconds, leaving blue afterimages). Shot at from range, he raises five Lightning Walls in an
+  arc toward the shooter for 5 seconds (6-second cooldown); they stop shuriken, spears, flying swords, talismans,
+  giant swords, lightning waves, Demon Assault fists and enemy sparks, and turn Thor's hammer back. Tuning lives in
+  `KUNLUN_SKILLS` in `kunlun.ts`.
 - Cavalry, a spear rider on a brown horse: 320 HP, 230 px/s. Mounted, it gallops in and
   circles its target, switching direction every 1.4 seconds, and never stops to attack: every
   0.7 seconds it sweeps its spear, hitting every enemy within 34 px of its edge for 16 damage
@@ -458,7 +481,12 @@ bodies come with this form. Seven Sha Fists (七煞拳): an enemy up to 250 px a
 makes him rush it and throw seven punches, one per colour, for 7 each, then burst
 all seven colours for 12 and heavy knockback around it (7 s cooldown). Sonic Dash:
 an enemy 80 to 320 px away makes him streak to it at 1400 px/s and hit it for 30,
-knocking it up (6 s cooldown). Sha Kasaya
+knocking it up (6 s cooldown). Every punch throws a painted fist of its sha colour
+off his knuckles (ink-outlined, gold wrist band, speed strokes behind it) that
+bursts where it lands in a ragged splash with ink-edged rays and flung drops; the
+heavy straight's fist is bigger. Demon Assault: an enemy 30 to 230 px away makes
+him plant his feet and machine-gun sixteen fists at it, one every 0.09 s, fanned a
+little, each hitting the first enemy in its way for 9 (9 s cooldown). Sha Kasaya
 (煞袈裟): an enemy within 120 px wraps him in a seven-colour mantle for 4 s (12 s
 cooldown); nothing stuns, freezes, scares, lifts, lures or grabs him and enemies
 touching him catch fire. His ultimate is Red Lotus Karmic Fire (红莲业火): 3 s into
@@ -488,7 +516,7 @@ are gone in this form, but he still parries (90% of hits in every form, batting
 projectiles back the way they came). His ultimate is Divine Thunder Slash (神雷斩), once per fight: the first time he
 drops below 25% HP with an enemy on the field, the battle stops to watch. Every enemy
 freezes in shock while he jumps to the centre of the field and levitates. Behind him
-a door of black smoke gathers, eagle eyes on it open and blaze gold, and it swings
+a door of fire and lightning gathers into a colossal face, its eyes open and blaze blue-white, and it swings
 open in a flash that lights up the whole screen: behind it his lightning emperor god
 sits towering, majestic, leaning on one raised knee, his eyes glowing red. The screen shakes harder and harder as
 lightning rains on the field, striking every enemy once for 20. A bolt falls into his

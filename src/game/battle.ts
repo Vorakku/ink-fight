@@ -8,6 +8,8 @@ import { drawCharmHeart, drawSirenSong, SIREN, SIREN_SONG } from './siren.ts'
 import { drawKatanaImpact, drawKatanaSlash, drawShuriken, KATANA_SLASH_DURATION, NINJA, NINJA_AMBUSH, NINJA_DASH, SHURIKEN_SPEED } from './ninja.ts'
 import { drawSpartanSpear, SPARTAN, SPARTAN_BASH, SPARTAN_FORMATION, SPARTAN_THROW, SPARTAN_KNIFE, SPARTAN_CHARGE, SPARTAN_COMMANDER } from './spartan.ts'
 import { CAVALRY_FOOT, CAVALRY_GALLOP_FRAMES, CAVALRY_RIDE } from './cavalry.ts'
+import { drawLuiAura, drawLuiHeld, drawLuiSpin, drawLuiSweep, drawLuiSweepSpear, LUI_CHARGE, LUI_SWEEP, LUI_COUCH_TIP, LUI_ENHANCE, LUI_FENG, luiHeldTip, luiSpearAngle } from './luifeng.ts'
+import { drawInkCharge, drawInkSlash, INK_SLASH_LIFE } from './inkcharge.ts'
 import { activeSpartanSlot, leaveSpartanFormation, updateSpartanFormations, drawSpartanFormation, drawSpartanCharge, type SpartanFormation, type SpartanArmy } from './spartan-formations.ts'
 import { MANTIS, MANTIS_DUEL, MANTIS_DODGE, MANTIS_GUARD, MANTIS_EVOLUTION, MANTIS_MOON_SLASH,
   mantisForm, drawMantisDuel, drawMantisMolt, drawMantisMoonSlash,
@@ -26,12 +28,12 @@ import { drawYanBlackHole, drawYanBurst, drawYanCleave, drawYanColossus, drawYan
   YAN_JIN_WARD, YAN_DEMON, YAN_DEMON_BLINK, YAN_DEMON_RAM, YAN_DEMON_RUIN, drawYanRamShield,
   YAN_JIN_TEMPEST, YAN_DEMON_GATHER, drawYanCrescent, drawYanBlood, drawYanDemonAura, drawYanDemonBlade, drawYanRoar, drawYanRuinCracks,
   drawYanRuinEruption, drawYanTrail, drawYanInk } from './yanjin.ts'
-import { drawKunlunSwing } from './kunlun.ts'
+import { drawKunlunBlade, drawKunlunCrescent, drawKunlunShield, drawKunlunSpark, drawKunlunSwing, drawKunlunWall, drawLightning, drawLightningFlash, KUNLUN, KUNLUN_SKILLS, type KunlunPose } from './kunlun.ts'
 import { drawMengBind, drawMengBreeze, drawMengConfused, drawMengDissolve, drawMengParry, drawMengSlashes, drawMengTitle, ease, MENG_BREEZE, MENG_CLONE,
   MENG_PARRY, MENG_REST, MENG_DEVILS, drawMengDevils, drawMengDevil, drawMengRitual, MENG_RITUAL, MENG_RITUAL_TIME,
   MENG_THUNDER, MENG_THUNDER_FORM, drawMengThunderMoon, MENG_STEP, drawMengStep, drawMengStrike, drawMengSwing,
   MENG_GOD, drawMengGod, drawMengDivineWave, drawMengGodTitle, drawMengStorm, drawMengGodLight, drawMengAura, MENG_RAGE, drawMengRage, drawMengPrint, MENG_BODY, MENG_BODY_FORM, MENG_SHA, MENG_SHA_LIFE, MENG_PUNCH_LIFE, drawMengSha,
-  drawMengPunch, MENG_FISTS, MENG_SONIC, drawMengFists, drawMengBurst, MENG_KASAYA, drawMengKasaya, MENG_LOTUS, inMengLotus, drawMengLotus,
+  drawMengPunch, MENG_FISTS, MENG_ASSAULT, SHA_FIST_LIFE, drawShaFist, drawShaFistShot, MENG_SONIC, drawMengFists, drawMengBurst, MENG_KASAYA, drawMengKasaya, MENG_LOTUS, inMengLotus, drawMengLotus,
   drawMengLotusTitle, MENG_RING, drawMengRing, drawMengRingTitle } from './mengchuan.ts'
 export { TEAM_COLORS, type Team } from './units.ts'
 
@@ -79,12 +81,24 @@ export interface Fighter {
   meiStar: number // star dash cooldown
   meiHand: number // the hand that threw last: 0 front (right), 1 back (left)
   meiForm: number // 0 calm, 1 nine-tailed fox, 2 fox form with its spirits summoned
+  kunlunCharged: boolean // Thunder Charge landed: his plain hits zap for the rest of his life
+  kunlun: KunlunSkill | null // the skill whose pose is playing
+  kunlunCd: Record<KunlunCooldown, number>
+  kunlunHaste: number // Storm Spin's double speed, seconds left
+  kunlunShield: number // Thunder Shield seconds left: enemy damage cut while it lasts
+  kunlunFoe: Fighter | null // the last enemy to hit him from range while his walls were ready
+  kunlunOwner: Fighter | null // set on a Lightning Clone: the Kunlun it belongs to
+  kunlunCloneLife: number // a clone's seconds left before it fades
   spartanFormation: SpartanFormation | null
   spartanCommander: { troops: Fighter[] } | null
   spartanSpear: boolean
   spartanMark: Fighter | null
   spartanThrowCooldown: number
   cavalryMounted: boolean
+  luiEnhance: number | null // Lui Feng's Enhance cast: seconds into the overhead spin and slam
+  luiAura: number // Enhance aura seconds left: faster, stronger, tougher
+  luiCharge: LuiCharge | null
+  luiChargeCooldown: number
   mantisDuel: MantisDuel | null
   mantisCooldown: number
   mantisGrace: number
@@ -173,6 +187,7 @@ export interface Fighter {
   falling: boolean
   knockup: number // seconds left in the air after Yan Jin's slam
   knockupAir: number // how long that flight lasts in all (the slam's, unless shorter)
+  knockupFree: boolean // this flight lands without the usual stun (Yan Jin's basic slam), so the combo can't lock
   yanCombo: number // long-sword slices landed since his last slam
   yanSeal: { x: number; y: number; time: number } | null // Yan Jin's Gravity Seal while his sword is in the ground
   yanSealCooldown: number
@@ -203,6 +218,8 @@ export interface Fighter {
   mengBody: boolean // chose the Body Refinement Divine-Demon transformation: fists, sha and the red lotus
   mengPunch: number // punches thrown in the body form: picks the sha colour and every fourth heavy straight
   mengFists: MengFists | null // Seven Sha Fists
+  mengAssault: { target: Fighter; time: number; fired: number; angle: number } | null // Demon Assault: fists fired so far, last aim
+  mengAssaultCooldown: number
   mengSonic: { target: Fighter; time: number; fromX: number; fromY: number } | null // Sonic Dash, while streaking in
   mengSonicCooldown: number
   mengSonicTrail: { fromX: number; fromY: number; toX: number; toY: number; time: number } | null // its fading streak
@@ -242,6 +259,18 @@ export interface Tower {
 }
 
 interface Tree { x: number; y: number; occupant: Fighter | null }
+type KunlunCooldown = 'spin' | 'wall' | 'dive' | 'crescent' | 'strike' | 'sparks' | 'shield' | 'step' | 'clone'
+// Kunlun's skill in progress, `time` seconds in; (fromX, fromY) is where he stood, (x, y) the dive's landing or where the shooter was.
+// Lightning Step also keeps where on the circle it began (`angle`), which way it runs (`spin`) and the strikes landed (`count`).
+interface KunlunSkill { kind: 'charge' | KunlunCooldown; time: number; target: Fighter; fromX: number; fromY: number; x: number; y: number
+  angle?: number; spin?: number; count?: number }
+// A Lightning Wall: `points` are the ends of its segments on the ground, in order.
+interface KunlunWall { owner: Fighter; points: { x: number; y: number }[]; life: number; seed: number }
+interface KunlunCrescent { owner: Fighter; x: number; y: number; nx: number; ny: number; left: number; hits: Set<Fighter> }
+interface KunlunBolt { owner: Fighter; target: Fighter; x: number; y: number; nx: number; ny: number; life: number; seed: number }
+interface KunlunGhost { x: number; y: number; facing: number; size: number; team: Team; life: number }
+// One of Kunlun's forked bolts from (x1, y1) to (x2, y2); `flash` marks a strike that hits the ground at its end.
+interface KunlunBoltFx { x1: number; y1: number; x2: number; y2: number; width: number; life: number; max: number; seed: number; flash: boolean }
 // Autumn Breeze: the cut from (x1, y1) to (x2, y2), still growing while its owner dashes (`left` px to go along (nx, ny)),
 // then its painting `time` seconds in; `victims` were each cut once.
 interface MengBreeze { owner: Fighter; x1: number; y1: number; x2: number; y2: number; nx: number; ny: number; left: number; time: number; victims: Fighter[]
@@ -301,6 +330,8 @@ interface LightningWave {
   age: number; radius: number; height: number; damage: number; hits: Set<Fighter>
 }
 // Seven Sha Fists: rushing in, throwing the seven punches (`thrown` so far), then the burst; `time` in this phase.
+// Lui Feng's Piercing Charge: gathering, galloping at the target, then carrying it on the spear and flinging it.
+interface LuiCharge { phase: 'windup' | 'dash' | 'lift' | 'swing'; time: number; target: Fighter }
 interface MengFists { target: Fighter; phase: 'rush' | 'fists' | 'burst'; time: number; thrown: number; x: number; y: number }
 interface SaintMelee {
   phase: 'flip' | 'melee' | 'mount'; time: number; target: Fighter; combo: number
@@ -461,6 +492,10 @@ function incomingDamage(target: Fighter, damage: number, owner?: Fighter | null,
   }
   // Undying Body: Meng Chuan's refined flesh shrugs off part of every enemy blow.
   if (target.mengBody && !target.zombie && owner && !allies(target, owner)) damage *= 1 - MENG_BODY.armor
+  // Thunder Shield: Kunlun's lightning dome soaks part of every enemy blow.
+  if (target.kunlunShield > 0 && !target.zombie && owner && !allies(target, owner)) damage *= 1 - KUNLUN_SKILLS.shield.reduce
+  // Enhance: Lui Feng's aura turns part of every enemy blow.
+  if (target.luiAura > 0 && !target.zombie && owner && !allies(target, owner)) damage *= 1 - LUI_ENHANCE.armor
   if (spartanCommanderProtected(target)) damage = Math.min(damage, Math.max(0, target.hp - 1))
   if (target.species === 'ant-tank' && !target.zombie) return damage * (1 - ANT_PROVOKE.armor)
   return isBlackRex(target) && owner && !allies(target, owner) ? damage * (1 - TREX_BLACK.armor) : damage
@@ -517,6 +552,10 @@ function fighterDef(fighter: Fighter) {
     : fighter.species === 'swordsaint' && fighter.saintBamboo ? { ...UNITS.swordsaint, // HP stays: it sets the threshold
       damage: SWORD_SAINT.damage * SWORD_SAINT_BAMBOO.power, knockback: SWORD_SAINT.knockback * SWORD_SAINT_BAMBOO.power,
       speed: SWORD_SAINT.speed * SWORD_SAINT_BAMBOO.power, cooldown: SWORD_SAINT.cooldown / SWORD_SAINT_BAMBOO.power }
+    : fighter.species === 'kunlun' && (fighter.kunlunHaste > 0 || fighter.kunlunOwner) ? { ...UNITS.kunlun,
+      hp: fighter.kunlunOwner ? KUNLUN_SKILLS.clone.hp : KUNLUN.hp, speed: KUNLUN.speed * (fighter.kunlunHaste > 0 ? KUNLUN_SKILLS.spin.speed : 1) }
+    : fighter.species === 'luifeng' && fighter.luiAura > 0 ? { ...UNITS.luifeng, speed: LUI_FENG.speed * LUI_ENHANCE.speed,
+      damage: LUI_FENG.damage * LUI_ENHANCE.power, knockback: LUI_FENG.knockback * LUI_ENHANCE.power }
     : fighter.colony ? { ...UNITS.anthill, hp: ANTHILL.hp + Math.max(0, fighter.colony.level - 1) * 250,
       radius: ANTHILL.radius * (1 + Math.max(0, fighter.colony.level - 1) * 0.35),
       size: 1 + Math.max(0, fighter.colony.level - 1) * 0.35 }
@@ -553,6 +592,7 @@ export class Battle {
   yanCleaves: { x: number; y: number; facing: number; titleX: number; life: number }[] = []
   yanTrails: { x1: number; y1: number; x2: number; y2: number; life: number }[] = []
   mengBreezes: MengBreeze[] = []
+  luiSweeps: { owner: Fighter; time: number; facing: number }[] = [] // Lui Feng's painted normal-attack sweeps
   mengRings: { owner: Fighter; x: number; y: number; time: number; seed: number; victims: Fighter[] }[] = [] // 悲苍一画秋风
   mengParries: { x: number; y: number; angle: number; life: number; seed: number }[] = []
   private mengParried: Fighter | null = null // set by a parry, so a projectile hit can tell it was batted away
@@ -569,6 +609,10 @@ export class Battle {
   mengShas: { x: number; y: number; color: string; age: number; seed: number; angle: number | null; size: number }[] = []
   // Each body-form punch's ink stroke, left where he threw it (x, y are his feet then).
   mengPunches: { x: number; y: number; facing: number; size: number; k: number; heavy: boolean; age: number }[] = []
+  // Where a body-form punch landed: its sha burst at (x, y), thrown along `angle`.
+  shaFists: { x: number; y: number; angle: number; k: number; age: number; seed: number; size: number }[] = []
+  // Demon Assault's flying fists.
+  shaShots: { owner: Fighter; x: number; y: number; vx: number; vy: number; life: number; k: number; seed: number }[] = []
   mengLotuses: { owner: Fighter; x: number; y: number; age: number }[] = []
   mengPrints: { x: number; y: number; angle: number; age: number; seed: number }[] = [] // the rampage's slam
   yanBlood: { owner: Fighter; x: number; y: number; bend: number; life: number; total: number }[] = []
@@ -591,6 +635,12 @@ export class Battle {
   dragonDomains: DragonDomain[] = []
   iceRings: IceRing[] = []
   lightningWaves: LightningWave[] = []
+  kunlunWalls: KunlunWall[] = []
+  kunlunCrescents: KunlunCrescent[] = []
+  kunlunBolts: KunlunBolt[] = []
+  kunlunGhosts: KunlunGhost[] = []
+  kunlunLightning: KunlunBoltFx[] = []
+  kunlunDazed: { target: Fighter; life: number }[] = [] // enemies confused by Lightning Clones, for the "?" over them
   width = 1
   height = 1
   tick = 0
@@ -853,15 +903,18 @@ export class Battle {
     fighter.waterPosition = { x: fighter.x, y: fighter.y }
   }
 
-  spawn(x: number, y: number, team: Team, species: Species = 'goose', commander = false) {
+  spawn(x: number, y: number, team: Team, species: Species = 'goose', commander = false, variant = 0) {
     if (this.fighters.length >= MAX_FIGHTERS) return
     const fighter: Fighter = {
       id: this.nextId++, species, x, y, vx: 0, vy: 0, team, hp: UNITS[species].hp,
       cooldown: 0, attack: 0, hit: 0, fear: 0, scaredBy: null, target: null, retaliation: null, stun: 0, shock: 0, hammerOut: false, catching: 0,
-      skillCooldown: 0, swordStack: species === 'swordsaint' ? SWORD_SAINT_SWORDS.max : 0, saintWard: 0, saintBamboo: false, saint: null, saintRest: null, mei: null, meiMelee: 0, meiRanged: 0, meiFoe: null, meiFox: 0, meiBarrage: 0, meiMine: 0, meiStar: 0, meiHand: 1, meiForm: 0, spartanFormation: null, casting: 0, slam: 0, charge: null, lightning: null,
+      skillCooldown: 0, swordStack: species === 'swordsaint' ? SWORD_SAINT_SWORDS.max : 0, saintWard: 0, saintBamboo: false, saint: null, saintRest: null, mei: null, meiMelee: 0, meiRanged: 0, meiFoe: null, meiFox: 0, meiBarrage: 0, meiMine: 0, meiStar: 0, meiHand: 1, meiForm: 0,
+      kunlunCharged: false, kunlun: null, kunlunCd: { spin: 0, wall: 0, dive: 0, crescent: 0, strike: 0, sparks: 0, shield: 0, step: 0, clone: 0 }, kunlunHaste: 0, kunlunShield: 0, kunlunFoe: null, kunlunOwner: null, kunlunCloneLife: 0,
+      spartanFormation: null, casting: 0, slam: 0, charge: null, lightning: null,
       spartanSpear: species === 'spartan', spartanMark: null, spartanThrowCooldown: SPARTAN_THROW.opening,
       spartanCommander: species === 'spartan' && commander ? { troops: [] } : null,
-      cavalryMounted: species === 'cavalry',
+      cavalryMounted: species === 'cavalry' || species === 'luifeng',
+      luiEnhance: null, luiAura: 0, luiCharge: null, luiChargeCooldown: 0,
       mantisDuel: null, mantisCooldown: 0, mantisGrace: 0, mantisMeals: 0, mantisEaten: false,
       mantisDodge: null, mantisDodgeCooldown: 0,
       mantisKills: 0, mantisForm: 0, mantisLeap: null, mantisCloak: 0, mantisPrey: null,
@@ -884,8 +937,8 @@ export class Battle {
       lightningSword: null, lightningSwordCooldown: 0,
       song: 0, lure: null,
       waterPosition: null,
-      tower: null, elevation: 0, falling: false, knockup: 0, knockupAir: YAN_JIN_SLAM.air, yanCombo: 0, yanSeal: null, yanSealCooldown: 1.5, float: null, yanCat: null, yanCatCooldown: YAN_JIN_CATASTROPHE.opening, yanWard: null, yanWardCooldown: 0,
-      yanDemon: false, yanTurn: null, yanBlink: null, yanBlinkCooldown: 0, mengDash: null, mengParry: 0, mengClone: null, mengCloneCooldown: 0, mengFeast: null, mengDevilForm: false, mengRingCooldown: 0, mengThunder: false, mengStep: null, mengGod: null, mengGodUsed: false, mengBody: false, mengPunch: 0, mengFists: null, mengSonic: null, mengSonicCooldown: 0, mengSonicTrail: null, mengKasaya: 0, mengKasayaCooldown: 0, mengLotusCooldown: 0, mengRage: false, mengRageStep: 0, mengLeap: null, mengRitual: null, devilOwner: null, yanRam: null, yanRamCooldown: 0, yanMoonCooldown: 2, yanRuin: null, yanRuinCooldown: 0,
+      tower: null, elevation: 0, falling: false, knockup: 0, knockupAir: YAN_JIN_SLAM.air, knockupFree: false, yanCombo: 0, yanSeal: null, yanSealCooldown: 1.5, float: null, yanCat: null, yanCatCooldown: YAN_JIN_CATASTROPHE.opening, yanWard: null, yanWardCooldown: 0,
+      yanDemon: false, yanTurn: null, yanBlink: null, yanBlinkCooldown: 0, mengDash: null, mengParry: 0, mengClone: null, mengCloneCooldown: 0, mengFeast: null, mengDevilForm: false, mengRingCooldown: 0, mengThunder: false, mengStep: null, mengGod: null, mengGodUsed: false, mengBody: false, mengPunch: 0, mengFists: null, mengAssault: null, mengAssaultCooldown: 0, mengSonic: null, mengSonicCooldown: 0, mengSonicTrail: null, mengKasaya: 0, mengKasayaCooldown: 0, mengLotusCooldown: 0, mengRage: false, mengRageStep: 0, mengLeap: null, mengRitual: null, devilOwner: null, yanRam: null, yanRamCooldown: 0, yanMoonCooldown: 2, yanRuin: null, yanRuinCooldown: 0,
       colony: species === 'anthill' ? { time: 0, need: this.nextColony[team], workers: 0, counted: false, brood: 0,
         level: 0, recruits: 0, exit: 0, alarm: 0, enemy: null } : null,
       antHome: null, antDeployed: false, antFlight: null, taunt: null,
@@ -910,7 +963,26 @@ export class Battle {
       const tree = this.nearestNinjaTree(fighter, 18)
       if (tree) this.hideNinja(fighter, tree)
     }
+    if (variant) this.applyVariant(fighter, variant)
     return fighter
+  }
+
+  // Starts a fighter in a later form (VARIANTS in units.ts, same order), at that form's full health.
+  private applyVariant(fighter: Fighter, variant: number) {
+    switch (fighter.species) {
+      case 'dragon': fighter.dragonForm = variant as DragonForm; fighter.dragonProgress = DRAGON_FORMS[variant].progress; break
+      case 'phoenix': fighter.phoenixForm = variant as PhoenixForm; fighter.phoenixKills = PHOENIX_FORMS[variant].kills; break
+      case 'rex': if (variant === 2) fighter.rexKills = TREX_BLACK.kills; else fighter.rexMeals = TREX_ALPHA.meals; break
+      case 'mantis':
+        fighter.mantisForm = variant as MantisForm
+        fighter.mantisKills = [0, MANTIS_EVOLUTION.blades, MANTIS_EVOLUTION.wings, MANTIS_EVOLUTION.hunter][variant]
+        break
+      case 'swordsaint': fighter.saintBamboo = true; break
+      case 'meiyuanzhi': fighter.meiForm = variant; if (variant === 2) this.summonMeiSpirits(fighter); break
+      case 'yanjin': fighter.yanDemon = true; break
+      case 'mengchuan': this.mengTransform(fighter, variant - 1); break
+    }
+    fighter.hp = fighterDef(fighter).hp
   }
 
   private trySpartanCommander(team: Team) {
@@ -951,7 +1023,9 @@ export class Battle {
       leaveSpartanFormation(fighter)
       fighter.spartanCommander = null
       fighter.spartanSpear = fighter.species === 'spartan'
-      fighter.cavalryMounted = fighter.species === 'cavalry'
+      fighter.cavalryMounted = fighter.species === 'cavalry' || fighter.species === 'luifeng'
+      fighter.luiEnhance = null
+      fighter.luiAura = fighter.luiChargeCooldown = 0
       fighter.spartanMark = null
       fighter.spartanThrowCooldown = SPARTAN_THROW.opening
       fighter.dragonDomainUsed = false
@@ -1015,6 +1089,7 @@ export class Battle {
     this.yanInks = []
     this.yanTrails = []
     this.mengBreezes = []
+    this.luiSweeps = []
     this.mengRings = []
     this.mengParries = []
     this.mengClones = []
@@ -1024,6 +1099,8 @@ export class Battle {
     this.mengWaves = []
     this.mengShas = []
     this.mengPunches = []
+    this.shaFists = []
+    this.shaShots = []
     this.mengLotuses = []
     this.mengPrints = []
     this.yanBlood = []
@@ -1045,6 +1122,12 @@ export class Battle {
     this.mantisMoonSlashes = []
     this.iceRings = []
     this.lightningWaves = []
+    this.kunlunWalls = []
+    this.kunlunCrescents = []
+    this.kunlunBolts = []
+    this.kunlunGhosts = []
+    this.kunlunLightning = []
+    this.kunlunDazed = []
     this.water.clear()
     this.towers = []
     this.trees = []
@@ -1578,7 +1661,7 @@ export class Battle {
       victim.mantisMoon = null
     }
     if (owner?.species === 'meng-devil') owner = owner.devilOwner // a devil's kill is its master's
-    if (!owner || owner.hp <= 0 || owner.zombie || building(victim) || allies(owner, victim)) return
+    if (!owner || owner.hp <= 0 || owner.zombie || building(victim) || victim.kunlunOwner || allies(owner, victim)) return
     // An Encore becoming an egg has not died permanently yet.
     if (!victim.zombie && victim.species === 'phoenix' && victim.stage === 'adult') return
     if (owner.species === 'mantis') {
@@ -1736,11 +1819,15 @@ export class Battle {
     }
     if (yanAirborne(target)) return false
     if (target.yanTurn) return false // turning demon, Yan Jin is untouchable
+    if (target.dragonDomain && target.dragonDomain.time < DOMAIN_CAST) return false // the dragon rising to seal its domain
+    if (target.rexBloodlustCall > 0) return false // the black T-Rex roaring into bloodlust
     if (target.mengClone) return false // among his shadows, Meng Chuan cannot be hit
     if (target.mengRitual) return false // nor while choosing his transformation
     if (target.mengStep && target.mengStep.hop < MENG_STEP.hops) return false // nor while he flashes as lightning
     if (target.mengGod) return false // nor while his god stands behind him
     if (target.mengLeap) return false // nor while he leaps for the red lotus
+    if (target.kunlun?.kind === 'dive') return false // Kunlun is out of reach mid-flip
+    if (target.kunlun?.kind === 'step' && target.kunlun.time < KUNLUN_SKILLS.step.circle + KUNLUN_SKILLS.step.dash) return false // and too fast to hit while stepping
     if (target.mei && target.mei.kind !== 'barrage') { // Mei's escape backflip is immune and his shield soaks every hit
       if (target.mei.kind === 'shield' && damage > 0) {
         target.mei.absorbed += damage
@@ -1754,6 +1841,11 @@ export class Battle {
       return false
     }
     if (dodgeable && damage > 0 && owner && this.tryMantisDodge(target, owner)) return false
+    if (owner?.kunlunOwner) { // a Lightning Clone's every blow is a weak copy of his
+      damage *= KUNLUN_SKILLS.clone.power
+      kx *= KUNLUN_SKILLS.clone.power
+      ky *= KUNLUN_SKILLS.clone.power
+    }
     if (damage > 0 && owner && !allies(owner, target) && this.trySaintDeflect(target)) return false
     if (damage > 0 && owner && !allies(owner, target) && this.tryMengParry(target, owner)) return false
     damage = incomingDamage(target, damage, owner, true)
@@ -1767,6 +1859,10 @@ export class Battle {
         <= fighterDef(owner).radius + fighterDef(target).radius + MEI_PRESSURE.closeReach
       if (close) target.meiMelee++
       else { target.meiRanged++; target.meiFoe = owner }
+    }
+    if (owner && dealt > 0 && target.species === 'kunlun' && !target.zombie && target.kunlunCd.wall <= 0 && !allies(owner, target)
+      && Math.hypot(owner.x - target.x, owner.y - target.y) > fighterDef(owner).radius + fighterDef(target).radius + KUNLUN_SKILLS.wall.close) {
+      target.kunlunFoe = owner
     }
     if (dealt > 0) {
       if (target.saintRest?.kind === 'meditate') target.saintRest = null
@@ -2302,6 +2398,7 @@ export class Battle {
       wave.y += wave.vy / DRAGON_LIGHTNING_SWORD.waveSpeed * travel
       wave.remaining -= travel
       wave.age += DT
+      if (this.kunlunBlocks(wave.owner, wave.x, wave.y)) { wave.remaining = 0; continue }
       let blocked = false
       for (const tower of this.towers) {
         if (tower.hp <= 0 || !tower.occupant || allies(wave.owner, tower.occupant)) continue
@@ -2393,6 +2490,7 @@ export class Battle {
   }
 
   private turnZombie(fighter: Fighter, team: Team) {
+    if (fighter.kunlunOwner) { fighter.hp = 0; fighter.infection = null; return } // a lightning clone just fades
     if (spartanCommanderProtected(fighter)) { fighter.infection = null; return }
     fighter.saintRest = null
     fighter.spartanCommander = null
@@ -2422,6 +2520,11 @@ export class Battle {
     fighter.iceDive = null
     fighter.lightningSword = null
     fighter.feeding = null
+    if (fighter.kunlun?.kind === 'dive') fighter.elevation = 0
+    fighter.kunlun = fighter.kunlunFoe = null
+    fighter.kunlunHaste = fighter.kunlunShield = 0
+    fighter.luiEnhance = null
+    fighter.luiAura = 0
     this.leaveTower(fighter, true)
     this.leaveNinjaTree(fighter)
     this.releaseGrab(fighter)
@@ -2452,9 +2555,13 @@ export class Battle {
     this.phoenixFires = this.phoenixFires.filter((fire) => fire.owner !== fighter)
     this.phoenixFireballs = this.phoenixFireballs.filter((ball) => ball.owner !== fighter)
     this.lightningWaves = this.lightningWaves.filter((wave) => wave.owner !== fighter)
+    this.kunlunWalls = this.kunlunWalls.filter((wall) => wall.owner !== fighter)
+    this.kunlunCrescents = this.kunlunCrescents.filter((wave) => wave.owner !== fighter)
+    this.kunlunBolts = this.kunlunBolts.filter((bolt) => bolt.owner !== fighter)
     this.mengLotuses = this.mengLotuses.filter((lotus) => lotus.owner !== fighter)
     this.mengRings = this.mengRings.filter((ring) => ring.owner !== fighter)
-    fighter.mengLeap = fighter.mengFists = fighter.mengSonic = null
+    fighter.mengLeap = fighter.mengFists = fighter.mengSonic = fighter.mengAssault = null
+    this.shaShots = this.shaShots.filter((shot) => shot.owner !== fighter)
     fighter.mengKasaya = 0
     fighter.elevation = 0
     for (const other of this.fighters) {
@@ -2477,6 +2584,13 @@ export class Battle {
       rammed.vx = rammed.vy = 0
     }
     owner.rexRam = null
+    const pierced = owner.luiCharge?.target
+    if (pierced?.heldBy === owner) { // slides off the spear: a live victim drops from wherever it was held
+      pierced.heldBy = null
+      if (pierced.hp > 0 && pierced.elevation > 0) pierced.falling = true
+      else pierced.elevation = 0
+    }
+    owner.luiCharge = null
     return target
   }
 
@@ -3408,15 +3522,156 @@ export class Battle {
 
   // Mounted sweep: every reachable enemy around the rider is hit and knocked outward.
   private cavalrySlash(owner: Fighter) {
-    const def = fighterDef(owner)
-    for (const other of this.nearbyFighters(owner.x, owner.y, def.radius + CAVALRY_RIDE.slash + 48)) {
+    const def = fighterDef(owner), reach = owner.species === 'luifeng' ? LUI_SWEEP.reach : CAVALRY_RIDE.slash
+    for (const other of this.nearbyFighters(owner.x, owner.y, def.radius + reach + 48)) {
       if (!targetable(owner, other) || !grounded(other) || !canReach(owner, other)) continue
       const dx = other.x - owner.x, dy = other.y - owner.y, distance = Math.hypot(dx, dy)
-      if (distance > def.radius + fighterDef(other).radius + CAVALRY_RIDE.slash) continue
+      if (distance > def.radius + fighterDef(other).radius + reach) continue
       const nx = distance > 0.001 ? dx / distance : owner.facing, ny = distance > 0.001 ? dy / distance : 0
       this.hit(other, def.damage, nx * def.knockback, ny * def.knockback, owner, 0, true)
     }
-    this.impacts.push({ x: owner.x, y: owner.y, radius: def.radius + CAVALRY_RIDE.slash, life: 0.25, color: '#dce6e8' })
+    if (owner.species === 'luifeng' && !owner.zombie) this.luiSweeps.push({ owner, time: 0, facing: owner.facing })
+    else this.impacts.push({ x: owner.x, y: owner.y, radius: def.radius + CAVALRY_RIDE.slash, life: 0.25, color: '#dce6e8' })
+  }
+
+  // Enhance: with an enemy close and the skill ready, Lui Feng reins in to whirl his halberd overhead.
+  private tryLuiEnhance(fighter: Fighter, target: Fighter | null) {
+    if (fighter.species !== 'luifeng' || fighter.zombie || !target || fighter.skillCooldown > 0 || fighter.stun > 0 || fighter.fear > 0
+      || fighter.frozen > 0 || fighter.lure || fighter.heldBy || fighter.thrown || fighter.tower || !grounded(fighter)) return false
+    if (Math.hypot(target.x - fighter.x, target.y - fighter.y) > LUI_ENHANCE.trigger) return false
+    fighter.luiEnhance = 0
+    fighter.skillCooldown = LUI_ENHANCE.cooldown
+    return this.stepLuiEnhance(fighter)
+  }
+
+  // He stands his horse while the halberd whirls, slams it down at the end of the spin, then holds the slam a moment.
+  private stepLuiEnhance(fighter: Fighter) {
+    const E = LUI_ENHANCE, before = fighter.luiEnhance!
+    if (fighter.zombie || fighter.heldBy || fighter.thrown || fighter.stun > 0 || fighter.frozen > 0 || fighter.fear > 0 || fighter.lure) {
+      fighter.luiEnhance = null // interrupted: the cooldown stays spent
+      return false
+    }
+    fighter.luiEnhance = before + DT
+    this.move(fighter, 0, 0)
+    if (before < E.spin && fighter.luiEnhance >= E.spin) this.luiSlam(fighter)
+    if (fighter.luiEnhance >= E.spin + E.slam) fighter.luiEnhance = null
+    return true
+  }
+
+  // The slam knocks every enemy around him away, then the aura takes hold.
+  private luiSlam(owner: Fighter) {
+    const E = LUI_ENHANCE, def = fighterDef(owner)
+    this.impacts.push({ x: owner.x, y: owner.y, radius: E.radius, life: 0.45, color: '#ffd66b' })
+    this.impacts.push({ x: owner.x + owner.facing * 12 * def.size, y: owner.y, radius: 40, life: 0.4, smoke: true })
+    this.craters.push({ x: owner.x + owner.facing * 12 * def.size, y: owner.y, life: 2 })
+    for (const victim of this.nearbyFighters(owner.x, owner.y, E.radius + 48)) {
+      if (victim.hp <= 0 || allies(owner, victim) || building(victim) || !grounded(victim)) continue
+      const dx = victim.x - owner.x, dy = victim.y - owner.y, distance = Math.hypot(dx, dy)
+      if (distance > E.radius + fighterDef(victim).radius) continue
+      const angle = distance > 0.001 ? Math.atan2(dy, dx) : victim.id * 2.39996
+      this.hit(victim, E.damage, Math.cos(angle) * E.knockback, Math.sin(angle) * E.knockback, owner)
+    }
+    owner.luiAura = E.duration
+  }
+
+  // Piercing Charge: a target at gallop distance and the skill ready, he leans back and starts gathering.
+  private tryLuiCharge(fighter: Fighter, target: Fighter | null) {
+    if (fighter.species !== 'luifeng' || fighter.zombie || fighter.luiChargeCooldown > 0 || fighter.luiEnhance !== null
+      || !target || !targetable(fighter, target) || !grounded(target) || building(target) || fighter.stun > 0 || fighter.fear > 0
+      || fighter.frozen > 0 || fighter.lure || fighter.heldBy || fighter.thrown || fighter.tower || !grounded(fighter)) return false
+    const dx = target.x - fighter.x, distance = Math.hypot(dx, target.y - fighter.y)
+    if (distance < LUI_CHARGE.minRange || distance > LUI_CHARGE.range) return false
+    fighter.luiCharge = { phase: 'windup', time: 0, target }
+    fighter.luiChargeCooldown = LUI_CHARGE.cooldown
+    fighter.attack = 0
+    if (Math.abs(dx) > 2) fighter.facing = dx > 0 ? 1 : -1
+    return this.stepLuiCharge(fighter)
+  }
+
+  private stepLuiCharge(fighter: Fighter) {
+    const C = LUI_CHARGE, charge = fighter.luiCharge!, target = charge.target, def = fighterDef(fighter)
+    const carrying = target.heldBy === fighter, closing = charge.phase === 'windup' || charge.phase === 'dash'
+    if (fighter.zombie || fighter.stun > 0 || fighter.frozen > 0 || fighter.fear > 0 || fighter.lure || fighter.heldBy || fighter.thrown
+      || (closing ? !targetable(fighter, target) || !grounded(target) : !carrying || target.hp <= 0)) {
+      this.releaseGrab(fighter) // interrupted: the cooldown stays spent, and a carried victim drops
+      fighter.vx = fighter.vy = 0
+      return false
+    }
+    charge.time += DT
+    const dx = target.x - fighter.x, dy = target.y - fighter.y, distance = Math.hypot(dx, dy)
+    if (charge.phase === 'windup') {
+      this.move(fighter, 0, 0)
+      if (Math.abs(dx) > 2) fighter.facing = dx > 0 ? 1 : -1
+      if (charge.time >= C.windup) { charge.phase = 'dash'; charge.time = 0 }
+      return true
+    }
+    if (charge.phase === 'dash') { // gallops straight at the target, steering after it
+      const nx = distance > 0 ? dx / distance : fighter.facing, ny = distance > 0 ? dy / distance : 0
+      const oldX = fighter.x, oldY = fighter.y
+      fighter.x += nx * C.speed * DT; fighter.y += ny * C.speed * DT
+      fighter.vx = nx * C.speed; fighter.vy = ny * C.speed
+      fighter.phase += DT * 18
+      if (Math.abs(nx) > 0.1) fighter.facing = nx > 0 ? 1 : -1
+      this.clamp(fighter)
+      if (segmentDistance(target.x, target.y, oldX, oldY, fighter.x, fighter.y) <= def.radius + fighterDef(target).radius + C.reach) {
+        this.luiPierce(fighter, target, nx, ny)
+        return true
+      }
+      if (charge.time >= C.dash || fighter.x === oldX && fighter.y === oldY) {
+        fighter.luiCharge = null
+        fighter.vx = fighter.vy = 0
+      }
+      return true
+    }
+    // Lift then swing: he reins in and the victim rides the spear point.
+    this.move(fighter, 0, 0)
+    const [tx, ty] = luiHeldTip(luiSpearAngle(charge.phase, charge.time))
+    target.x = fighter.x + fighter.facing * tx * def.size
+    target.y = fighter.y + 1 // just in front, so he draws behind the victim and the victim behind nothing else of his
+    target.elevation = Math.max(0, -ty * def.size - 20 * fighterDef(target).size)
+    target.vx = target.vy = 0
+    this.clamp(target)
+    if (charge.phase === 'lift') {
+      if (charge.time >= C.lift) { charge.phase = 'swing'; charge.time = 0 }
+      return true
+    }
+    if (charge.time < C.swing) return true
+    // Flung: the renderer arcs and tumbles thrown fighters over the T-Rex throw's flight time, so use the same.
+    const flight = TREX_GRAB.distance / TREX_GRAB.speed, angle = (this.random() - 0.5) * 0.6
+    this.releaseGrab(fighter)
+    target.falling = false
+    target.elevation = 0
+    target.vx = Math.cos(angle) * fighter.facing * C.distance / flight
+    target.vy = Math.sin(angle) * C.distance / flight
+    target.thrown = { owner: fighter, time: flight }
+    fighter.cooldown = def.cooldown
+    return true
+  }
+
+  // The spear goes in: a target he can lift is carried up on it; anything wider is only hit and knocked back.
+  private luiPierce(owner: Fighter, target: Fighter, nx: number, ny: number) {
+    const C = LUI_CHARGE, charge = owner.luiCharge!
+    const tooLarge = fighterDef(target).radius > fighterDef(owner).radius
+    const damage = C.damage * (owner.luiAura > 0 ? LUI_ENHANCE.power : 1)
+    owner.vx = owner.vy = 0
+    this.impacts.push({ x: target.x, y: target.y - 16, radius: 24, life: 0.3, color: '#221f33' })
+    const struck = this.hit(target, damage, tooLarge ? nx * C.knockback : 0, tooLarge ? ny * C.knockback : 0, owner)
+    if (!struck || target.hp <= 0 || tooLarge || target.heldBy || target.thrown) {
+      owner.luiCharge = null
+      owner.attack = 1
+      return
+    }
+    this.releaseGrab(target)
+    this.leaveNinjaTree(target)
+    target.rexStomp = target.roar = 0
+    target.feeding = null
+    target.charge = target.lightning = null
+    target.dash = target.ambush = null
+    target.lightningSword = null
+    target.heldBy = owner
+    target.vx = target.vy = 0
+    charge.phase = 'lift'
+    charge.time = 0
   }
 
   private spartanAttack(owner: Fighter, target: Fighter, nx: number, ny: number) {
@@ -3919,12 +4174,371 @@ export class Battle {
   }
 
   // No enemy around: heroes heal; the saint goes fishing once fully healed.
+  // Kunlun's timers each tick, and the afterimages he sheds while Storm Spin speeds him up.
+  private tickKunlun(fighter: Fighter, def: ReturnType<typeof fighterDef>) {
+    const cd = fighter.kunlunCd, S = KUNLUN_SKILLS.spin
+    for (const key of Object.keys(cd) as KunlunCooldown[]) cd[key] = Math.max(0, cd[key] - DT)
+    fighter.kunlunHaste = Math.max(0, fighter.kunlunHaste - DT)
+    fighter.kunlunShield = Math.max(0, fighter.kunlunShield - DT)
+    const owner = fighter.kunlunOwner
+    if (owner) {
+      fighter.kunlunCloneLife -= DT
+      if (fighter.kunlunCloneLife <= 0 || owner.hp <= 0 || owner.zombie) fighter.hp = 0 // fades, or goes with him
+    }
+    if (fighter.kunlunFoe && (fighter.kunlunFoe.hp <= 0 || cd.wall > 0)) fighter.kunlunFoe = null
+    if (fighter.kunlunHaste > 0 && !fighter.zombie && this.tick % S.ghostEvery === 0 && Math.hypot(fighter.vx, fighter.vy) > 20) {
+      this.kunlunGhosts.push({ x: fighter.x, y: fighter.y, facing: fighter.facing, size: def.size, team: fighter.team, life: S.ghostLife })
+    }
+  }
+
+  private startKunlun(fighter: Fighter, kind: KunlunSkill['kind'], target: Fighter, x = target.x, y = target.y) {
+    fighter.kunlun = { kind, time: 0, target, fromX: fighter.x, fromY: fighter.y, x, y }
+    if (kind === 'step') {
+      fighter.kunlun.angle = Math.atan2(fighter.y - target.y, fighter.x - target.x)
+      fighter.kunlun.spin = this.random() < 0.5 ? -1 : 1
+    }
+    fighter.saintRest = null
+    fighter.vx = fighter.vy = 0
+    if (Math.abs(x - fighter.x) > 2) fighter.facing = x > fighter.x ? 1 : -1
+    if (kind === 'strike') this.kunlunStrike(fighter, target)
+    else if (kind === 'crescent') this.kunlunCrescent(fighter, target)
+    else if (kind === 'wall') this.kunlunWall(fighter, x, y)
+    return true
+  }
+
+  // Thunder Charge first, then the spam: each time his swing is ready he rolls his skills in order; with none rolled
+  // and the target out of sword reach he rolls again shortly, so the chances stay chances.
+  private tryKunlunSkill(fighter: Fighter, target: Fighter | null) {
+    if (fighter.species !== 'kunlun' || fighter.zombie || fighter.kunlun || !target || fighter.stun > 0 || fighter.fear > 0
+      || fighter.frozen > 0 || fighter.lure || fighter.heldBy || fighter.thrown || fighter.tower || !grounded(fighter)) return false
+    if (!fighter.kunlunCharged) return this.startKunlun(fighter, 'charge', target)
+    if (fighter.cooldown > 0) return false
+    const K = KUNLUN_SKILLS, cd = fighter.kunlunCd, def = fighterDef(fighter)
+    const gap = Math.hypot(target.x - fighter.x, target.y - fighter.y) - def.radius - fighterDef(target).radius
+    const roll = (chance: number) => this.random() < chance
+    const kind: KunlunCooldown | null =
+      cd.shield <= 0 && fighter.kunlunShield <= 0 && fighter.hp < def.hp * K.shield.below && roll(K.shield.chance) ? 'shield'
+      : cd.step <= 0 && gap <= K.step.reach && grounded(target) && !building(target) && roll(K.step.chance) ? 'step'
+      : cd.clone <= 0 && !fighter.kunlunOwner && roll(K.clone.chance) ? 'clone'
+      : cd.dive <= 0 && gap >= K.dive.min && gap <= K.dive.max && grounded(target) && roll(K.dive.chance) ? 'dive'
+      : cd.crescent <= 0 && gap <= K.crescent.reach && roll(K.crescent.chance) ? 'crescent'
+      : cd.sparks <= 0 && roll(K.sparks.chance) ? 'sparks'
+      : cd.strike <= 0 && roll(K.strike.chance) ? 'strike'
+      : cd.spin <= 0 && fighter.kunlunHaste <= 0 && (gap > K.spin.far || roll(K.spin.chance)) ? 'spin' : null
+    if (!kind) {
+      if (gap > def.range) fighter.cooldown = K.retry
+      return false
+    }
+    cd[kind] = K[kind].cooldown
+    fighter.cooldown = def.cooldown
+    return this.startKunlun(fighter, kind, target)
+  }
+
+  // Shot at from range with his walls ready, he throws them up toward the shooter.
+  private tryKunlunWall(fighter: Fighter) {
+    const foe = fighter.kunlunFoe
+    if (!foe || fighter.species !== 'kunlun' || fighter.zombie || fighter.kunlunOwner || fighter.kunlun || fighter.kunlunCd.wall > 0 || fighter.stun > 0
+      || fighter.frozen > 0 || fighter.fear > 0 || fighter.lure || fighter.heldBy || fighter.thrown || !grounded(fighter)) return false
+    fighter.kunlunFoe = null
+    fighter.kunlunCd.wall = KUNLUN_SKILLS.wall.cooldown
+    return this.startKunlun(fighter, 'wall', foe, foe.x, foe.y)
+  }
+
+  private stepKunlun(fighter: Fighter) {
+    const skill = fighter.kunlun!, K = KUNLUN_SKILLS
+    const dive = skill.kind === 'dive'
+    if (fighter.zombie || fighter.heldBy || fighter.thrown
+      || (!dive && (fighter.stun > 0 || fighter.frozen > 0 || fighter.fear > 0 || fighter.lure))) {
+      fighter.kunlun = null // interrupted: the cooldown stays spent, and an unfinished charge is tried again later
+      if (dive) fighter.elevation = 0
+      return false
+    }
+    skill.time += DT
+    if (skill.kind === 'step') return this.stepKunlunStep(fighter, skill)
+    if (dive) {
+      const p = Math.min(1, skill.time / K.dive.time)
+      fighter.x = skill.fromX + (skill.x - skill.fromX) * p
+      fighter.y = skill.fromY + (skill.y - skill.fromY) * p
+      fighter.elevation = Math.sin(p * Math.PI) * K.dive.height
+      fighter.vx = fighter.vy = 0
+      this.clamp(fighter)
+      if (p < 1) return true
+      fighter.elevation = 0
+      fighter.kunlun = null
+      this.kunlunSlam(fighter)
+      return true
+    }
+    this.move(fighter, 0, 0)
+    if (skill.time < K[skill.kind].time) return true
+    fighter.kunlun = null
+    const head = { x: fighter.x + fighter.facing * 10, y: fighter.y - 44 * fighterDef(fighter).size }
+    if (skill.kind === 'charge') {
+      fighter.kunlunCharged = true
+      this.kunlunBolt(head.x - 14, head.y - 220, head.x, head.y + 6, 1, false)
+      this.impacts.push({ x: head.x, y: head.y, radius: 26, life: 0.35, color: '#4aa8ff' })
+    } else if (skill.kind === 'spin') {
+      fighter.kunlunHaste = K.spin.haste
+      this.kunlunBolt(fighter.x - 16, fighter.y - 260, fighter.x, fighter.y, 1.2, true)
+      this.impacts.push({ x: fighter.x, y: fighter.y - 16, radius: 40, life: 0.4, color: '#4aa8ff' })
+    } else if (skill.kind === 'shield') {
+      fighter.kunlunShield = K.shield.duration
+      this.kunlunBolt(fighter.x - 12, fighter.y - 250, fighter.x, fighter.y - 20, 1, false)
+      this.impacts.push({ x: fighter.x, y: fighter.y - 20, radius: K.shield.radius + 10, life: 0.35, color: '#9fd8ff' })
+    } else if (skill.kind === 'clone') this.summonKunlunClones(fighter)
+    else if (skill.kind === 'sparks') this.releaseKunlunSparks(fighter, skill)
+    return true
+  }
+
+  // Lightning Step: laps round the target (untouchable, shedding afterimages), the dash through it with a slice,
+  // then the strikes, one at a time.
+  private stepKunlunStep(fighter: Fighter, skill: KunlunSkill) {
+    const S = KUNLUN_SKILLS.step, target = skill.target
+    if (skill.time < S.circle + S.dash && !targetable(fighter, target)) { fighter.kunlun = null; return false }
+    const ring = fighterDef(target).radius + S.ring
+    fighter.vx = fighter.vy = 0
+    if (skill.time < S.circle) {
+      const a = skill.angle! + skill.spin! * skill.time / S.circle * S.laps * Math.PI * 2
+      fighter.x = target.x + Math.cos(a) * ring
+      fighter.y = target.y + Math.sin(a) * ring
+      fighter.facing = -Math.sin(a) * skill.spin! > 0 ? 1 : -1
+      this.clamp(fighter)
+      if (this.tick % S.ghostEvery === 0) {
+        this.kunlunGhosts.push({ x: fighter.x, y: fighter.y, facing: fighter.facing, size: fighterDef(fighter).size, team: fighter.team, life: KUNLUN_SKILLS.spin.ghostLife })
+      }
+      return true
+    }
+    const dashTime = skill.time - S.circle
+    if (dashTime - DT < 0) { // the dash begins: straight through the target and out the far side
+      const dx = target.x - fighter.x, dy = target.y - fighter.y, d = Math.hypot(dx, dy) || 1
+      skill.fromX = fighter.x
+      skill.fromY = fighter.y
+      skill.x = target.x + dx / d * (fighterDef(target).radius + S.past)
+      skill.y = target.y + dy / d * (fighterDef(target).radius + S.past)
+      fighter.facing = dx > 0 ? 1 : -1
+    }
+    if (dashTime < S.dash) {
+      const p = dashTime / S.dash
+      fighter.x = skill.fromX + (skill.x - skill.fromX) * p
+      fighter.y = skill.fromY + (skill.y - skill.fromY) * p
+      this.clamp(fighter)
+      return true
+    }
+    if (dashTime - DT < S.dash) { // the slice lands as he comes out the far side
+      fighter.x = skill.x
+      fighter.y = skill.y
+      this.clamp(fighter)
+      fighter.attack = 1
+      this.kunlunBolt(skill.fromX, skill.fromY - 18, skill.x, skill.y - 18, 0.8, false, 0.3)
+      if (targetable(fighter, target) && this.hit(target, S.slashDamage, 0, 0, fighter, 0.3) && target.hp > 0 && !building(target)) {
+        target.stun = Math.max(target.stun, S.hold)
+      }
+    }
+    const due = Math.min(S.strikes, Math.floor((dashTime - S.dash) / S.every) + 1)
+    while ((skill.count ?? 0) < due) {
+      skill.count = (skill.count ?? 0) + 1
+      if (!targetable(fighter, target)) continue
+      this.kunlunBolt(target.x - 14, target.y - target.elevation - 260, target.x, target.y - target.elevation, 1, true)
+      if (this.hit(target, S.strikeDamage, 0, 0, fighter, 0.3) && target.hp > 0 && !building(target)) target.stun = Math.max(target.stun, 0.3)
+    }
+    if ((skill.count ?? 0) >= S.strikes) fighter.kunlun = null
+    return true
+  }
+
+  // Lightning Clones: lightning hits four spots round him; he stands at one, his clones at the others, and every
+  // enemy near him is dazed and loses track of him.
+  private summonKunlunClones(owner: Fighter) {
+    const C = KUNLUN_SKILLS.clone, base = this.random() * Math.PI * 2
+    const spots = Array.from({ length: C.count + 1 }, (_, k) => {
+      const a = base + k * Math.PI * 2 / (C.count + 1)
+      return { x: owner.x + Math.cos(a) * C.spread, y: owner.y + Math.sin(a) * C.spread }
+    })
+    const mine = Math.floor(this.random() * spots.length)
+    spots.forEach((spot, k) => {
+      this.kunlunBolt(spot.x - 12, spot.y - 250, spot.x, spot.y, 0.9, true)
+      if (k === mine) {
+        owner.x = spot.x
+        owner.y = spot.y
+        this.clamp(owner)
+        return
+      }
+      const clone = this.spawn(spot.x, spot.y, owner.team, 'kunlun')
+      if (!clone) return
+      clone.kunlunOwner = owner
+      clone.kunlunCloneLife = C.life
+      clone.kunlunCharged = true
+      clone.hp = C.hp
+      clone.facing = owner.facing
+      for (const key of Object.keys(clone.kunlunCd) as KunlunCooldown[]) clone.kunlunCd[key] = this.random() * 2 // staggered, not in unison
+      clone.kunlunCd.clone = clone.kunlunCd.wall = clone.kunlunCd.step = clone.kunlunCd.shield = Infinity // no walls, no more clones, no untouchable step, no shield
+    })
+    for (const foe of [...this.nearbyFighters(owner.x, owner.y, C.dazeRadius + 32)]) {
+      if (!targetable(owner, foe) || building(foe) || Math.hypot(foe.x - owner.x, foe.y - owner.y) > C.dazeRadius) continue
+      foe.stun = Math.max(foe.stun, C.daze)
+      if (foe.target === owner) foe.target = null
+      if (foe.retaliation === owner) foe.retaliation = null
+      this.kunlunDazed.push({ target: foe, life: C.daze })
+    }
+  }
+
+  private kunlunBolt(x1: number, y1: number, x2: number, y2: number, width: number, flash: boolean, life = 0.35) {
+    this.kunlunLightning.push({ x1, y1, x2, y2, width, life, max: life, seed: this.random() * 1000, flash })
+  }
+
+  // The charged blade's zap on a plain hit.
+  private kunlunZap(owner: Fighter, target: Fighter) {
+    const C = KUNLUN_SKILLS.charge
+    this.kunlunBolt(owner.x + owner.facing * 16, owner.y - 22, target.x, target.y - 14 - target.elevation, 0.5, false, 0.2)
+    if (this.hit(target, C.damage, 0, 0, owner, C.stun) && target.hp > 0 && !building(target)) target.stun = Math.max(target.stun, C.stun)
+  }
+
+  // Heaven Strike: lightning straight onto the target, no warning, splashing a little.
+  private kunlunStrike(owner: Fighter, target: Fighter) {
+    const S = KUNLUN_SKILLS.strike
+    this.kunlunBolt(target.x - 14, target.y - target.elevation - 260, target.x, target.y - target.elevation, 1.1, true)
+    this.impacts.push({ x: target.x, y: target.y, radius: S.splash, life: 0.3, color: '#9fd8ff' })
+    if (this.hit(target, S.damage, 0, 0, owner, S.stun) && target.hp > 0 && !building(target)) target.stun = Math.max(target.stun, S.stun)
+    for (const other of this.nearbyFighters(target.x, target.y, S.splash + 32)) {
+      if (other === target || !targetable(owner, other)) continue
+      if (Math.hypot(other.x - target.x, other.y - target.y) > S.splash + fighterDef(other).radius) continue
+      this.hit(other, S.splashDamage, 0, 0, owner, 0.3)
+    }
+  }
+
+  private kunlunCrescent(owner: Fighter, target: Fighter) {
+    const dx = target.x - owner.x, dy = target.y - owner.y, d = Math.hypot(dx, dy)
+    const nx = d > 0.001 ? dx / d : owner.facing, ny = d > 0.001 ? dy / d : 0
+    owner.attack = 1
+    this.kunlunCrescents.push({ owner, x: owner.x + nx * 14, y: owner.y + ny * 14, nx, ny, left: KUNLUN_SKILLS.crescent.distance, hits: new Set() })
+  }
+
+  // Five segments in a gentle arc between him and the shooter at (x, y), bowing back toward him at the ends.
+  private kunlunWall(owner: Fighter, x: number, y: number) {
+    const W = KUNLUN_SKILLS.wall, dx = x - owner.x, dy = y - owner.y, d = Math.hypot(dx, dy)
+    const nx = d > 0.001 ? dx / d : owner.facing, ny = d > 0.001 ? dy / d : 0
+    const cx = owner.x + nx * W.distance, cy = owner.y + ny * W.distance
+    const points = Array.from({ length: W.segments + 1 }, (_, k) => {
+      const t = (k / W.segments - 0.5) * W.width, back = t * t / (2 * W.bend)
+      return { x: cx - ny * t - nx * back, y: cy + nx * t - ny * back }
+    })
+    owner.attack = 1
+    this.kunlunWalls.push({ owner, points, life: W.life, seed: this.random() * 100 })
+    this.impacts.push({ x: cx, y: cy, radius: 30, life: 0.3, color: '#4aa8ff' })
+  }
+
+  // Whether a projectile of `owner`'s at (x, y) runs into an enemy Lightning Wall; it fizzles there if so.
+  private kunlunBlocks(owner: Fighter, x: number, y: number) {
+    for (const wall of this.kunlunWalls) {
+      if (wall.owner === owner || allies(wall.owner, owner)) continue
+      for (let k = 1; k < wall.points.length; k++) {
+        const a = wall.points[k - 1], b = wall.points[k]
+        if (segmentDistance(x, y, a.x, a.y, b.x, b.y) > KUNLUN_SKILLS.wall.block) continue
+        this.impacts.push({ x, y, radius: 12, life: 0.25, color: '#9fd8ff' })
+        return true
+      }
+    }
+    return false
+  }
+
+  // The front flip lands: lightning on the spot, every grounded enemy nearby hit and knocked up a little.
+  private kunlunSlam(owner: Fighter) {
+    const D = KUNLUN_SKILLS.dive
+    this.kunlunBolt(owner.x - 14, owner.y - 260, owner.x + owner.facing * 16, owner.y, 1.4, true, 0.45)
+    this.impacts.push({ x: owner.x, y: owner.y, radius: D.radius, life: 0.4, color: '#4aa8ff' })
+    this.craters.push({ x: owner.x + owner.facing * 16, y: owner.y, life: 2 })
+    owner.slam = 1
+    for (const victim of this.nearbyFighters(owner.x, owner.y, D.radius + 32)) {
+      if (victim.hp <= 0 || allies(owner, victim) || building(victim) || !grounded(victim)) continue
+      const dx = victim.x - owner.x, dy = victim.y - owner.y, distance = Math.hypot(dx, dy)
+      if (distance > D.radius + fighterDef(victim).radius) continue
+      const angle = distance > 0.001 ? Math.atan2(dy, dx) : victim.id * 2.39996
+      if (!this.hit(victim, D.damage, Math.cos(angle) * D.push, Math.sin(angle) * D.push, owner)) continue
+      if (victim.hp <= 0 || !grounded(victim)) continue
+      this.releaseGrab(victim)
+      victim.knockup = victim.knockupAir = D.air
+    }
+  }
+
+  // Where spark `k` of Spark Sway circles him, `time` seconds into the sway (ground point; drawn lifted).
+  kunlunSparkAt(fighter: Fighter, k: number, time: number) {
+    const S = KUNLUN_SKILLS.sparks, a = time * 7 + k * Math.PI * 2 / S.count
+    return { x: fighter.x + Math.cos(a) * S.orbit, y: fighter.y + Math.sin(a) * S.orbit * 0.5 }
+  }
+
+  // The sway ends: each spark flies as a bolt at a different nearby enemy, the main target taking any spares.
+  private releaseKunlunSparks(owner: Fighter, skill: KunlunSkill) {
+    const S = KUNLUN_SKILLS.sparks
+    const foes = [...this.nearbyFighters(owner.x, owner.y, KUNLUN.detection)].filter((other) => targetable(owner, other)
+      && Math.hypot(other.x - owner.x, other.y - owner.y) <= KUNLUN.detection)
+      .sort((a, b) => Math.hypot(a.x - owner.x, a.y - owner.y) - Math.hypot(b.x - owner.x, b.y - owner.y))
+    const main = targetable(owner, skill.target) ? skill.target : foes[0]
+    if (!main) return
+    const picks = [main, ...foes.filter((foe) => foe !== main)]
+    for (let k = 0; k < S.count; k++) {
+      const at = this.kunlunSparkAt(owner, k, skill.time), target = picks[k] ?? main
+      const dx = target.x - at.x, dy = target.y - at.y, d = Math.hypot(dx, dy) || 1
+      this.kunlunBolts.push({ owner, target, x: at.x, y: at.y, nx: dx / d, ny: dy / d, life: S.life, seed: this.random() * 100 })
+    }
+  }
+
+  private stepKunlunEffects() {
+    const C = KUNLUN_SKILLS.crescent, S = KUNLUN_SKILLS.sparks
+    for (const wall of this.kunlunWalls) wall.life -= DT
+    this.kunlunWalls = this.kunlunWalls.filter((wall) => wall.life > 0)
+    for (const ghost of this.kunlunGhosts) ghost.life -= DT
+    for (const bolt of this.kunlunLightning) bolt.life -= DT
+    for (const daze of this.kunlunDazed) daze.life -= DT
+    this.kunlunDazed = this.kunlunDazed.filter((daze) => daze.life > 0 && daze.target.hp > 0)
+    this.kunlunLightning = this.kunlunLightning.filter((bolt) => bolt.life > 0)
+    this.kunlunGhosts = this.kunlunGhosts.filter((ghost) => ghost.life > 0)
+    for (const wave of this.kunlunCrescents) {
+      const travel = Math.min(C.speed * DT, wave.left)
+      wave.x += wave.nx * travel
+      wave.y += wave.ny * travel
+      wave.left -= travel
+      for (const victim of this.nearbyFighters(wave.x, wave.y, C.width / 2 + 32)) {
+        if (wave.hits.has(victim) || !targetable(wave.owner, victim) || !grounded(victim)) continue
+        const r = fighterDef(victim).radius, dx = victim.x - wave.x, dy = victim.y - wave.y
+        if (Math.abs(dx * wave.nx + dy * wave.ny) > 12 + r || Math.abs(dy * wave.nx - dx * wave.ny) > C.width / 2 + r) continue
+        wave.hits.add(victim)
+        this.hit(victim, C.damage, wave.nx * C.knockback, wave.ny * C.knockback, wave.owner)
+      }
+    }
+    this.kunlunCrescents = this.kunlunCrescents.filter((wave) => wave.left > 0)
+    for (const bolt of this.kunlunBolts) {
+      bolt.life -= DT
+      if (!targetable(bolt.owner, bolt.target)) { // its target is gone: home on the nearest enemy instead
+        let best: Fighter | null = null, distance = 300
+        for (const other of this.nearbyFighters(bolt.x, bolt.y, 300)) {
+          const d = Math.hypot(other.x - bolt.x, other.y - bolt.y)
+          if (d < distance && targetable(bolt.owner, other)) { best = other; distance = d }
+        }
+        if (!best) { bolt.life = 0; continue }
+        bolt.target = best
+      }
+      const target = bolt.target, dx = target.x - bolt.x, dy = target.y - bolt.y, d = Math.hypot(dx, dy) || 1
+      bolt.nx = dx / d
+      bolt.ny = dy / d
+      const travel = Math.min(S.speed * DT, d)
+      bolt.x += bolt.nx * travel
+      bolt.y += bolt.ny * travel
+      if (this.kunlunBlocks(bolt.owner, bolt.x, bolt.y)) { bolt.life = 0; continue }
+      if (Math.hypot(target.x - bolt.x, target.y - bolt.y) > fighterDef(target).radius + 6) continue
+      bolt.life = 0
+      this.impacts.push({ x: bolt.x, y: bolt.y, radius: 14, life: 0.25, color: '#9fd8ff' })
+      if (this.hit(target, S.damage, bolt.nx * 40, bolt.ny * 40, bolt.owner, S.stun) && target.hp > 0 && !building(target)) {
+        target.stun = Math.max(target.stun, S.stun)
+      }
+    }
+    this.kunlunBolts = this.kunlunBolts.filter((bolt) => bolt.life > 0)
+  }
+
   private stepHeroRest(fighter: Fighter) {
     const mei = fighter.species === 'meiyuanzhi'
     const thor = fighter.species === 'thor'
     const yan = fighter.species === 'yanjin'
     const meng = fighter.species === 'mengchuan'
-    if ((fighter.species !== 'swordsaint' && !mei && !thor && !yan && !meng) || !canMeditate(fighter)) return false
+    const kun = fighter.species === 'kunlun' && !fighter.kunlunOwner // clones don't sit
+    if ((fighter.species !== 'swordsaint' && !mei && !thor && !yan && !meng && !kun) || !canMeditate(fighter)) return false
     if (fighter.yanDemon) { fighter.saintRest = null; return false } // the demon never sits still
     const def = fighterDef(fighter)
     // Once Yan Jin has driven his swords into the ground he keeps floating until an enemy shows up.
@@ -3951,12 +4565,12 @@ export class Battle {
         }
       } else {
         if (yan) fighter.saintRest.time += DT // drives his sit, sword-strike and float animation
-        fighter.hp = Math.min(def.hp, fighter.hp + (mei ? MEI_REST.heal : yan ? YAN_JIN_REST.heal : meng ? MENG_REST.heal : SWORD_SAINT_REST.heal) * DT)
+        fighter.hp = Math.min(def.hp, fighter.hp + (mei ? MEI_REST.heal : yan ? YAN_JIN_REST.heal : meng ? MENG_REST.heal : kun ? KUNLUN_SKILLS.rest : SWORD_SAINT_REST.heal) * DT)
       }
       this.move(fighter, 0, 0)
       return true
     }
-    if (mei || thor || yan || meng) { fighter.saintRest = null; return false }
+    if (mei || thor || yan || meng || kun) { fighter.saintRest = null; return false }
     let spot = fighter.saintRest?.kind === 'fish' && this.water.inWater(fighter.saintRest.x, fighter.saintRest.y) ? fighter.saintRest : null
     if (!spot && (this.tick + fighter.id) % 30 === 0) spot = this.nearestWater(fighter.x, fighter.y)
     fighter.saintRest = spot
@@ -4034,12 +4648,17 @@ export class Battle {
     fighter.vx = fighter.vy = 0
     if (ritual.time < MENG_RITUAL_TIME) return true
     fighter.mengRitual = null
-    if (ritual.chosen === MENG_THUNDER_FORM) {
+    this.mengTransform(fighter, ritual.chosen)
+    return true
+  }
+
+  private mengTransform(fighter: Fighter, chosen: number) {
+    if (chosen === MENG_THUNDER_FORM) {
       fighter.mengThunder = true
       fighter.mengFeast = null // the devils go quiet inside him
       this.impacts.push({ x: fighter.x, y: fighter.y - 14, radius: 46, life: 0.45, color: '#ffe14a' })
       this.bolts.push({ x: fighter.x - 12, y: fighter.y - 220, tx: fighter.x, ty: fighter.y - 30, life: 0.3 })
-    } else if (ritual.chosen === MENG_BODY_FORM) {
+    } else if (chosen === MENG_BODY_FORM) {
       fighter.mengBody = true
       fighter.mengFeast = null // the devils go quiet inside him
       fighter.mengLotusCooldown = MENG_LOTUS.opening
@@ -4049,7 +4668,6 @@ export class Battle {
       fighter.mengDevilForm = true
       this.summonMengDevils(fighter)
     }
-    return true
   }
 
   // A devil eating one of his bodies heals him by its size.
@@ -4183,6 +4801,7 @@ export class Battle {
       const tx = sword.target.hp > 0 ? sword.target.x : sword.x, ty = sword.target.hp > 0 ? sword.target.y : sword.y
       sword.x = sword.fromX + (tx - sword.fromX) * p
       sword.y = sword.fromY + (ty - sword.fromY) * p
+      if (this.kunlunBlocks(sword.owner, sword.x, sword.y)) { sword.time = Infinity; continue } // shattered: the filter drops it
       if (p < 1) continue
       // Impact: crater, area damage, outward knockback and a stun.
       const power = saintPower(sword.owner), radius = G.radius * power
@@ -4215,7 +4834,7 @@ export class Battle {
 
   // Meng Chuan turns most attacks aside, in every form, while he is free to move his sword.
   private tryMengParry(target: Fighter, owner: Fighter) {
-    if (target.species !== 'mengchuan' || target.zombie || target.mengDash || target.mengFists || target.mengSonic || target.stun > 0 || target.frozen > 0 || target.fear > 0
+    if (target.species !== 'mengchuan' || target.zombie || target.mengDash || target.mengFists || target.mengSonic || target.mengAssault || target.stun > 0 || target.frozen > 0 || target.fear > 0
       || target.heldBy || target.thrown || !grounded(target) || this.random() >= MENG_PARRY.chance) return false
     this.mengParried = target
     const dx = owner.x - target.x, dy = owner.y - target.y
@@ -4370,6 +4989,11 @@ export class Battle {
       star.y += star.vy * DT
       star.elevation = Math.max(0, star.elevation + star.vz * DT)
       star.life -= DT
+      if (!star.ride && this.kunlunBlocks(owner, star.x, star.y)) {
+        if (spear && !owner.spartanSpear) owner.spartanMark = null
+        this.shuriken.splice(i, 1)
+        continue
+      }
       if (owner.hp <= 0 || (spear && owner.spartanSpear && !owner.spartanCommander) || star.life <= 0 || star.x < 0 || star.y < 0 || star.x > this.width || star.y > this.height) {
         if (spear && !owner.spartanSpear) owner.spartanMark = null
         if (talisman && owner.hp > 0 && star.life <= 0) {
@@ -4791,6 +5415,7 @@ export class Battle {
       if (victim.hp <= 0 || !grounded(victim)) continue
       this.releaseGrab(victim) // a grabbing T-Rex or ram lets go mid-air
       victim.knockup = S.air
+      victim.knockupFree = true // lands ready to fight back
     }
     this.impacts.push({ x, y, radius: S.radius, life: 0.4, color: '#221f33' }) // a ring of ink to match the yin smash
     this.yanInks.push({ x, y, size: 30, age: 0, life: S.crater, seed: this.random() * 100, red: false })
@@ -5246,20 +5871,83 @@ export class Battle {
     this.mengShas.push({ x, y, color: MENG_SHA[k % MENG_SHA.length], age: 0, seed: this.random() * 1000, angle, size })
   }
 
+  private shaFist(x: number, y: number, angle: number, k: number, size: number) {
+    this.shaFists.push({ x, y, angle, k, age: 0, seed: this.random() * 1000, size })
+  }
+
+  // Demon Assault: in range with it ready, he plants his feet and starts the barrage.
+  private tryMengAssault(fighter: Fighter, target: Fighter | null) {
+    const A = MENG_ASSAULT
+    if (!target || fighter.species !== 'mengchuan' || !fighter.mengBody || fighter.zombie || fighter.mengAssault || fighter.mengFists
+      || fighter.mengSonic || fighter.mengLeap || fighter.mengAssaultCooldown > 0 || fighter.stun > 0 || fighter.fear > 0
+      || fighter.frozen > 0 || !grounded(fighter) || building(target)) return false
+    const d = Math.hypot(target.x - fighter.x, target.y - fighter.y)
+    if (d < A.min || d > A.range) return false
+    fighter.mengAssaultCooldown = A.cooldown
+    fighter.saintRest = null
+    fighter.mengAssault = { target, time: 0, fired: 0, angle: Math.atan2(target.y - fighter.y, target.x - fighter.x) }
+    return this.stepMengAssault(fighter)
+  }
+
+  // Fire one fist each interval at the target (or along the last aim once it is gone), fanned a little, then recover.
+  private stepMengAssault(owner: Fighter) {
+    const A = MENG_ASSAULT, assault = owner.mengAssault!, target = assault.target
+    if (owner.zombie || !owner.mengBody || owner.stun > 0 || owner.frozen > 0 || owner.fear > 0 || owner.heldBy || owner.thrown) {
+      owner.mengAssault = null
+      return false
+    }
+    this.move(owner, 0, 0)
+    assault.time += DT
+    if (targetable(owner, target)) assault.angle = Math.atan2(target.y - owner.y, target.x - owner.x)
+    owner.facing = Math.cos(assault.angle) < 0 ? -1 : 1
+    const def = fighterDef(owner)
+    while (assault.fired < A.count && assault.time >= assault.fired * A.interval) {
+      const a = assault.angle + (this.random() - 0.5) * 2 * A.spread, k = owner.mengPunch++
+      this.shaShots.push({ owner, x: owner.x + Math.cos(a) * (def.radius + 8), y: owner.y + Math.sin(a) * (def.radius + 8),
+        vx: Math.cos(a) * A.speed, vy: Math.sin(a) * A.speed, life: A.range / A.speed + 0.15, k, seed: this.random() * 1000 })
+      owner.attack = 1
+      assault.fired++
+    }
+    if (assault.fired >= A.count && assault.time >= A.count * A.interval + A.recover) owner.mengAssault = null
+    return true
+  }
+
+  private stepShaShots() {
+    const A = MENG_ASSAULT
+    for (const fist of this.shaFists) fist.age += DT
+    this.shaFists = this.shaFists.filter((fist) => fist.age < SHA_FIST_LIFE)
+    for (const shot of this.shaShots) {
+      const px = shot.x, py = shot.y
+      shot.x += shot.vx * DT
+      shot.y += shot.vy * DT
+      shot.life -= DT
+      if (shot.owner.hp <= 0 || shot.owner.zombie || shot.x < 0 || shot.y < 0 || shot.x > this.width || shot.y > this.height) { shot.life = 0; continue }
+      if (this.kunlunBlocks(shot.owner, shot.x, shot.y)) { shot.life = 0; continue }
+      for (const victim of this.nearbyFighters(shot.x, shot.y, A.reach + 40)) {
+        if (!targetable(shot.owner, victim) || !grounded(victim)) continue
+        if (segmentDistance(victim.x, victim.y, px, py, shot.x, shot.y) > fighterDef(victim).radius + A.reach) continue
+        const speed = Math.hypot(shot.vx, shot.vy) || 1
+        this.hit(victim, A.damage, shot.vx / speed * A.knockback, shot.vy / speed * A.knockback, shot.owner, 0, true)
+        this.shaFist(shot.x, shot.y - 18, Math.atan2(shot.vy, shot.vx), shot.k, 0.8)
+        shot.life = 0
+        break
+      }
+    }
+    this.shaShots = this.shaShots.filter((shot) => shot.life > 0)
+  }
+
   // A body-form punch toward (nx, ny): the next sha colour leaks out of it. Every fourth is a heavy straight hitting
   // every enemy in a cone in front of him; the rest hit the target.
   private mengBodyPunch(owner: Fighter, target: Fighter, nx: number, ny: number) {
     if (owner.mengRage) { this.mengRageMove(owner, target, nx, ny); return }
     const def = fighterDef(owner), H = MENG_BODY.heavy, k = owner.mengPunch
     owner.mengPunch++
-    // The colour bursts out of the fist's head, spreading the way the punch goes; a smaller splash where it lands.
+    // The stroke carries a painted fist of the next sha colour; it bursts on whatever it lands on.
     const heavy = (k + 1) % H.every === 0, angle = Math.atan2(ny, nx)
-    const fistX = owner.x + nx * (def.radius + 14), fistY = owner.y - 18 * def.size + ny * 6
-    this.mengShaPuff(fistX, fistY, k, angle, heavy ? 1.9 : 1.15)
     this.mengPunches.push({ x: owner.x, y: owner.y + def.radius - owner.elevation, facing: nx < 0 ? -1 : 1, size: def.size, k, heavy, age: 0 })
     if (!heavy) {
       if (grounded(target) && canReach(owner, target) && this.hit(target, def.damage, nx * def.knockback, ny * def.knockback, owner, 0, true)) {
-        this.mengShaPuff(target.x, target.y - 14 - target.elevation, k, angle, 0.75)
+        this.shaFist(target.x, target.y - 14 - target.elevation, angle, k, 1)
       }
       return
     }
@@ -5270,7 +5958,7 @@ export class Battle {
       if (d > 0.001 && (dx * nx + dy * ny) / d < Math.cos(H.span)) continue
       const ux = d > 0.001 ? dx / d : nx, uy = d > 0.001 ? dy / d : ny
       if (this.hit(victim, def.damage * H.damage, ux * def.knockback * H.knockback, uy * def.knockback * H.knockback, owner, 0, true)) {
-        this.mengShaPuff(victim.x, victim.y - 14 - victim.elevation, k, Math.atan2(uy, ux), 1)
+        this.shaFist(victim.x, victim.y - 14 - victim.elevation, Math.atan2(uy, ux), k, 1.2)
       }
     }
   }
@@ -5283,11 +5971,10 @@ export class Battle {
     if (move < 2 && k % 2 !== move) k++ // the ink stroke bows one way for the left hook, the other for the right
     owner.mengPunch = k + 1
     if (move < 2) {
-      this.mengShaPuff(owner.x + nx * (def.radius + 14), owner.y - 18 * def.size + ny * 6, k, angle, 1.4)
       this.mengPunches.push({ x: owner.x, y: owner.y + def.radius - owner.elevation, facing: nx < 0 ? -1 : 1, size: def.size, k, heavy: false, age: 0 })
       if (grounded(target) && canReach(owner, target)
         && this.hit(target, def.damage * R.hook, nx * def.knockback * R.hookKnockback, ny * def.knockback * R.hookKnockback, owner, 0, true)) {
-        this.mengShaPuff(target.x, target.y - 14 - target.elevation, k, angle, 0.9)
+        this.shaFist(target.x, target.y - 14 - target.elevation, angle, k, 1.1)
       }
       return
     }
@@ -5311,7 +5998,7 @@ export class Battle {
   // Seven Sha Fists: an enemy in range makes the body form rush it.
   private tryMengFists(fighter: Fighter, target: Fighter | null) {
     const F = MENG_FISTS
-    if (!target || fighter.species !== 'mengchuan' || !fighter.mengBody || fighter.zombie || fighter.mengFists || fighter.skillCooldown > 0
+    if (!target || fighter.species !== 'mengchuan' || !fighter.mengBody || fighter.zombie || fighter.mengFists || fighter.mengAssault || fighter.skillCooldown > 0
       || fighter.stun > 0 || fighter.fear > 0 || fighter.frozen > 0 || !grounded(fighter) || !grounded(target) || building(target)) return false
     const d = Math.hypot(target.x - fighter.x, target.y - fighter.y)
     if (d < F.min || d > F.range) return false
@@ -5385,7 +6072,7 @@ export class Battle {
   // Sonic Dash: a far enemy makes the body form streak to it.
   private tryMengSonic(fighter: Fighter, target: Fighter | null) {
     const S = MENG_SONIC
-    if (!target || fighter.species !== 'mengchuan' || !fighter.mengBody || fighter.zombie || fighter.mengSonic || fighter.mengFists
+    if (!target || fighter.species !== 'mengchuan' || !fighter.mengBody || fighter.zombie || fighter.mengSonic || fighter.mengFists || fighter.mengAssault
       || fighter.mengSonicCooldown > 0 || fighter.stun > 0 || fighter.fear > 0 || fighter.frozen > 0 || !grounded(fighter)
       || !grounded(target) || building(target)) return false
     const d = Math.hypot(target.x - fighter.x, target.y - fighter.y)
@@ -5433,7 +6120,7 @@ export class Battle {
   // Red Lotus Karmic Fire: an enemy in range makes the body form leap up.
   private tryMengLotus(fighter: Fighter, target: Fighter | null) {
     const L = MENG_LOTUS
-    if (!target || fighter.species !== 'mengchuan' || !fighter.mengBody || fighter.zombie || fighter.mengLeap || fighter.mengFists
+    if (!target || fighter.species !== 'mengchuan' || !fighter.mengBody || fighter.zombie || fighter.mengLeap || fighter.mengFists || fighter.mengAssault
       || fighter.mengLotusCooldown > 0 || fighter.stun > 0 || fighter.fear > 0 || fighter.frozen > 0 || !grounded(fighter)
       || !grounded(target) || building(target)) return false
     const dx = target.x - fighter.x, dy = target.y - fighter.y
@@ -5929,7 +6616,8 @@ export class Battle {
     fighter.elevation = 0
     fighter.knockupAir = S.air
     if (fast) fighter.vx = fighter.vy = 0 // a short flight stops dead where it lands
-    fighter.stun = Math.max(fighter.stun, S.stun)
+    if (!fighter.knockupFree) fighter.stun = Math.max(fighter.stun, S.stun)
+    fighter.knockupFree = false
   }
 
   private groundSmash(owner: Fighter, radius: number, damage: number, knockback: number, color = '#3e9de8') {
@@ -6131,6 +6819,11 @@ export class Battle {
       const edge = hammer.x < 0 || hammer.y < 0 || hammer.x > this.width || hammer.y > this.height
       hammer.x = Math.max(0, Math.min(this.width, hammer.x))
       hammer.y = Math.max(0, Math.min(this.height, hammer.y))
+      if (!hammer.returning && this.kunlunBlocks(owner, hammer.x, hammer.y)) { // turned back to Thor, not lost
+        hammer.returning = true
+        hammer.hits.clear()
+        continue
+      }
       for (const target of this.fighters) {
         if (target.hp <= 0 || target.stage === 'egg' || target.heldBy || target.inside || allies(owner, target) || hammer.hits.has(target)) continue
         if (!target.tower && !canReach(owner, target)) continue
@@ -6221,6 +6914,8 @@ export class Battle {
       }
     }
     this.mengBreezes = this.mengBreezes.filter((breeze) => breeze.time < MENG_BREEZE.paint)
+    for (const sweep of this.luiSweeps) sweep.time += DT
+    this.luiSweeps = this.luiSweeps.filter((sweep) => sweep.time < LUI_SWEEP.life && sweep.owner.hp > 0)
     for (const ring of this.mengRings) ring.time += DT
     this.mengRings = this.mengRings.filter((ring) => ring.time < Math.max(MENG_RING.life, MENG_RING.title))
     for (const spark of this.mengParries) spark.life -= DT
@@ -6314,10 +7009,13 @@ export class Battle {
       fighter.hit = Math.max(0, fighter.hit - DT * 6)
       fighter.catching = Math.max(0, fighter.catching - DT * 6)
       fighter.skillCooldown = Math.max(0, fighter.skillCooldown - DT)
+      fighter.luiAura = Math.max(0, fighter.luiAura - DT)
+      fighter.luiChargeCooldown = Math.max(0, fighter.luiChargeCooldown - DT)
       fighter.mengParry = Math.max(0, fighter.mengParry - DT)
       fighter.mengCloneCooldown = Math.max(0, fighter.mengCloneCooldown - DT)
       fighter.mengKasayaCooldown = Math.max(0, fighter.mengKasayaCooldown - DT)
       fighter.mengLotusCooldown = Math.max(0, fighter.mengLotusCooldown - DT)
+      fighter.mengAssaultCooldown = Math.max(0, fighter.mengAssaultCooldown - DT)
       fighter.mengSonicCooldown = Math.max(0, fighter.mengSonicCooldown - DT)
       fighter.mengRingCooldown = Math.max(0, fighter.mengRingCooldown - DT)
       if (fighter.mengSonicTrail) fighter.mengSonicTrail.time -= DT
@@ -6338,6 +7036,7 @@ export class Battle {
       fighter.yanRamCooldown = Math.max(0, fighter.yanRamCooldown - DT)
       fighter.yanMoonCooldown = Math.max(0, fighter.yanMoonCooldown - DT)
       fighter.yanRuinCooldown = Math.max(0, fighter.yanRuinCooldown - DT)
+      if (fighter.species === 'kunlun') this.tickKunlun(fighter, def)
       if (fighter.species === 'swordsaint' && !fighter.zombie) {
         if (!fighter.saintBamboo && fighter.hp <= def.hp * SWORD_SAINT_BAMBOO.threshold) {
           fighter.saintBamboo = true // his swords become lightning bamboo for the rest of the fight
@@ -6347,7 +7046,7 @@ export class Battle {
         const power = saintPower(fighter)
         if (!fighter.saint) fighter.swordStack = Math.min(SWORD_SAINT_SWORDS.max * power, fighter.swordStack + DT / SWORD_SAINT_SWORDS.summon * power)
       }
-      if (fighter.cavalryMounted && fighter.hp <= def.hp * CAVALRY_RIDE.dismount) {
+      if (fighter.cavalryMounted && fighter.species === 'cavalry' && fighter.hp <= def.hp * CAVALRY_RIDE.dismount) {
         fighter.cavalryMounted = false
         fighter.stun = Math.max(fighter.stun, CAVALRY_RIDE.fall)
         this.impacts.push({ x: fighter.x, y: fighter.y, radius: 26, life: 0.35, smoke: true })
@@ -6407,7 +7106,7 @@ export class Battle {
       if (fighter.iceDive && this.stepIceDive(fighter)) continue
       if (fighter.heldBy) {
         if (fighter.heldBy.hp > 0 && (fighter.heldBy.grab?.target === fighter || fighter.heldBy.rexRam?.target === fighter
-          || fighter.heldBy.antFlight?.passenger === fighter)) continue
+          || fighter.heldBy.antFlight?.passenger === fighter || fighter.heldBy.luiCharge?.target === fighter)) continue
         fighter.heldBy = null
       }
       if (fighter.falling) {
@@ -6458,11 +7157,16 @@ export class Battle {
       if (fighter.mengDash && this.stepMengDash(fighter)) continue
       if (fighter.mengStep && this.stepMengStep(fighter)) continue
       if (fighter.mengFists && this.stepMengFists(fighter)) continue
+      if (fighter.mengAssault && this.stepMengAssault(fighter)) continue
       if (fighter.mengSonic && this.stepMengSonic(fighter)) continue
       if (fighter.mengClone && this.stepMengClone(fighter)) continue
       if (this.tryYanWard(fighter)) continue
       if (this.tryMeiTransform(fighter)) continue
       if (fighter.mei && this.stepMei(fighter)) continue
+      if (fighter.kunlun && this.stepKunlun(fighter)) continue
+      if (fighter.luiEnhance !== null && this.stepLuiEnhance(fighter)) continue
+      if (fighter.luiCharge && this.stepLuiCharge(fighter)) continue
+      if (this.tryKunlunWall(fighter)) continue
       const domainOwner = this.domainTarget(fighter)
       const duelOpponent = mantisOpponent(fighter)
       if (!domainOwner && !duelOpponent && this.stepNinjaCover(fighter)) continue
@@ -6519,7 +7223,11 @@ export class Battle {
       this.tryMengKasaya(fighter, target)
       if (this.tryMengSonic(fighter, target)) continue
       if (this.tryMengFists(fighter, target)) continue
+      if (this.tryMengAssault(fighter, target)) continue
       if (this.tryMeiSkill(fighter, target)) continue
+      if (this.tryKunlunSkill(fighter, target)) continue
+      if (this.tryLuiEnhance(fighter, target)) continue
+      if (this.tryLuiCharge(fighter, target)) continue
       if (this.stepSpartanFormation(fighter, domainOwner !== null)) continue
       if (!domainOwner && fighter.species === 'ant-tank' && fighter.antHome && target
         && Math.hypot(target.x - fighter.antHome.x, target.y - fighter.antHome.y) > 240) {
@@ -6638,7 +7346,11 @@ export class Battle {
               else if (fighter.species === 'spartan') this.spartanAttack(fighter, target, nx, ny)
               else if (fighter.species === 'mengchuan' && fighter.mengThunder) this.mengThunderSlash(fighter, nx, ny)
               else if (fighter.species === 'mengchuan' && fighter.mengBody) this.mengBodyPunch(fighter, target, nx, ny)
-              else if (fighter.species === 'cavalry' || fighter.species === 'mengchuan' || fighter.species === 'meng-devil' || fighter.species === 'kunlun') {
+              else if (fighter.species === 'kunlun') {
+                if (grounded(target) && canReach(fighter, target)
+                  && this.hit(target, def.damage, nx * def.knockback, ny * def.knockback, fighter, 0, true) && fighter.kunlunCharged) this.kunlunZap(fighter, target)
+              }
+              else if (fighter.species === 'cavalry' || fighter.species === 'luifeng' || fighter.species === 'mengchuan' || fighter.species === 'meng-devil') {
                 if (grounded(target) && canReach(fighter, target)) this.hit(target, def.damage, nx * def.knockback, ny * def.knockback, fighter, 0, true)
               }
               else if (fighter.species === 'mantis') this.mantisAttack(fighter, target, nx, ny)
@@ -6715,6 +7427,8 @@ export class Battle {
       }
     }
     this.stepLightningWaves()
+    this.stepKunlunEffects()
+    this.stepShaShots()
     this.stepHammers()
     this.stepShuriken()
     this.stepGiantSwords()
@@ -6779,7 +7493,10 @@ export class Battle {
           this.splats.filter((splat) => splat.body).length < 4000
           && this.fighters.some((ant) => ant.hp > 0 && !ant.zombie && ant.species === 'ant' && !allies(ant, fighter))))
           ? fighter : undefined
-        this.splats.push({ x: fighter.x, y: fighter.y + def.radius,
+        if (fighter.kunlunOwner) { // a lightning clone bursts into sparks and leaves nothing
+          this.impacts.push({ x: fighter.x, y: fighter.y - 18, radius: 22, life: 0.3, color: '#9fd8ff' })
+          this.kunlunBolt(fighter.x - 4, fighter.y - 30, fighter.x + 4, fighter.y + 2, 0.5, true, 0.25)
+        } else this.splats.push({ x: fighter.x, y: fighter.y + def.radius,
           life: meal ? DRAGON_FEED.corpseLife : body ? Infinity : 5, color: def.color, size: def.size, meal, body })
         fighter.mealFor = null
         if (!fighter.zombie && fighter.species === 'phoenix' && fighter.stage === 'adult') {
@@ -6806,6 +7523,9 @@ export class Battle {
     this.giantSwords = this.giantSwords.filter((sword) => sword.owner.hp > 0)
     this.shots = this.shots.filter((shot) => shot.owner.hp > 0)
     this.storms = this.storms.filter((area) => area.phase === 'impact' || area.owner.hp > 0)
+    this.kunlunWalls = this.kunlunWalls.filter((wall) => wall.owner.hp > 0)
+    this.kunlunCrescents = this.kunlunCrescents.filter((wave) => wave.owner.hp > 0)
+    this.kunlunBolts = this.kunlunBolts.filter((bolt) => bolt.owner.hp > 0)
   }
 }
 
@@ -6872,6 +7592,14 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
   for (const ring of battle.mengRings) drawMengRing(c, ring.x, ring.y, ring.time, ring.seed, -1) // its far side passes behind him
   for (const print of battle.mengPrints) drawMengPrint(c, print.x, print.y, print.angle, print.age, print.seed)
   for (const ink of battle.yanInks) drawYanInk(c, ink.x, ink.y, ink.size, ink.age, ink.life, ink.seed, ink.red)
+  for (const ghost of battle.kunlunGhosts) { // Storm Spin's afterimages fading behind him
+    c.save()
+    c.translate(ghost.x, ghost.y + KUNLUN.radius)
+    c.scale(ghost.facing * ghost.size, ghost.size)
+    c.globalAlpha = ghost.life / KUNLUN_SKILLS.spin.ghostLife * 0.45
+    c.drawImage(sprites.kunlun[ghost.team].kunlun!.ghost, -24, -44, 48, 48)
+    c.restore()
+  }
   for (const f of battle.fighters) {
     if (f.mengGod && f.hp > 0) drawMengGod(c, f.mengGod.cx, f.mengGod.cy + fighterDef(f).radius, f.mengGod.time, battle.tick, f.elevation)
   }
@@ -7056,10 +7784,16 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
   for (const slash of battle.mantisMoonSlashes) drawMantisMoonSlash(c, slash)
   for (const group of battle.spartanFormations) drawSpartanFormation(c, group)
   for (const fighter of battle.fighters) {
-    if (fighter.nest || (fighter.heldBy && fighter.heldBy.rexRam?.target !== fighter && fighter.heldBy.antFlight?.passenger !== fighter)
+    if (fighter.nest || (fighter.heldBy && fighter.heldBy.rexRam?.target !== fighter && fighter.heldBy.antFlight?.passenger !== fighter
+      && fighter.heldBy.luiCharge?.target !== fighter)
       || (fighter.inside && fighter.entry >= 1) || meiVanished(fighter)) continue
     const def = fighterDef(fighter)
     const poses = sprites[fighter.species][fighter.team]
+    const luiCharge = fighter.luiCharge
+    // His halberd follows the head of his latest sweep's blade trail while it is still going round.
+    const luiSwing = poses.lui && !fighter.zombie && !luiCharge && fighter.luiEnhance === null
+      ? battle.luiSweeps.findLast((sweep) => sweep.owner === fighter && sweep.time < LUI_SWEEP.time) : undefined
+    const luiSweeping = !!luiSwing
     const mantis = poses.mantis?.[fighter.mantisForm]
     if (fighter.colony) {
       const colony = fighter.colony, built = colony.time / COLONY_BUILD
@@ -7172,6 +7906,15 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     const kasaya = mengBody ? Math.min(1, fighter.mengKasaya / 0.25, (MENG_KASAYA.duration - fighter.mengKasaya) / 0.25) : 0
     const meiFox = poses.mei && fighter.meiForm > 0 && !fighter.zombie ? poses.mei.fox : undefined, meiPoses = meiFox ?? poses.mei
     const thorMeditating = isThor && meditating
+    // Kunlun's skill poses: the blade is drawn live over the sprite, swaying in Spark Sway, the body spinning in Storm Spin.
+    const kun = poses.kunlun && !fighter.zombie ? fighter.kunlun : null, KS = KUNLUN_SKILLS
+    const kunlunPose: KunlunPose | null = !kun ? null : kun.kind === 'step' ? kun.time < KS.step.circle ? null : 'slash'
+      : kun.kind === 'charge' || kun.kind === 'spin' || kun.kind === 'sparks' || kun.kind === 'shield' || kun.kind === 'clone' ? 'raise'
+      : kun.kind === 'strike' ? 'point' : 'slash'
+    const kunlunSway = kun?.kind === 'sparks' ? Math.sin(kun.time * 9) * 0.35 : 0
+    const kunlunSpin = kun?.kind === 'spin' ? Math.cos(kun.time / KS.spin.time * Math.PI * 4) : 1
+    const kunlunFlip = kun?.kind === 'dive' ? Math.min(1, kun.time / KS.dive.time) : null
+    const kunlunPower = poses.kunlun && !fighter.zombie ? fighter.kunlunCharged ? 1 : kun?.kind === 'charge' ? kun.time / KS.charge.time : 0 : 0
     const yanLift = poses.yan && meditating ? yanFloat(rest!.time, battle.tick) : 0
     // Catastrophe: his height while leaping, hovering and cleaving down, and his backflip progress.
     const yanCat = poses.yan && !fighter.zombie ? fighter.yanCat : null, CAT = YAN_JIN_CATASTROPHE
@@ -7388,9 +8131,14 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       c.rotate(-flipProgress * Math.PI * 2 * fighter.facing)
       c.translate(0, 24 * def.size)
     }
+    if (kunlunFlip !== null) { // Thunder Dive's front flip
+      c.translate(0, -24 * def.size)
+      c.rotate(kunlunFlip * Math.PI * 2 * fighter.facing)
+      c.translate(0, 24 * def.size)
+    }
     // Spinning to throw projectiles back, Yan Jin turns twice on the spot.
     const yanSpin = poses.yan && fighter.yanWard?.phase === 'spin' ? Math.cos(fighter.yanWard.time / YAN_JIN_WARD.spin * Math.PI * 4) : 1
-    c.scale(fighter.facing * def.size * (1 + fighter.hit * 0.22) * yanSpin, def.size * (1 + fighter.hit * 0.22))
+    c.scale(fighter.facing * def.size * (1 + fighter.hit * 0.22) * yanSpin * kunlunSpin, def.size * (1 + fighter.hit * 0.22))
     if (fighter.dragonSleeping) c.scale(1, 1 + Math.sin(battle.tick * 0.035 + fighter.id) * 0.025)
     if (fighter.inside) {
       c.globalAlpha = 1 - fighter.entry
@@ -7416,7 +8164,7 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       : mengBody && fighter.mengParry > 0 ? mengBody.parry
       : mengBody && meditating ? mengBody.meditate
       : mengBody && fighter.mengRage && fighter.attack > 0 && !fighter.mengFists ? [mengBody.hook, mengBody.punch, mengBody.slam][(fighter.mengRageStep + 2) % 3]
-      : mengBody && (fighter.attack > 0 || fighter.mengFists || fighter.mengSonic) ? mengBody.punch
+      : mengBody && (fighter.attack > 0 || fighter.mengFists || fighter.mengSonic || fighter.mengAssault) ? mengBody.punch
       : mengBody ? mengBody.ready
       : mengThunder && fighter.mengGod ? fighter.attack > 0 || fighter.mengGod.slashed ? mengThunder.slash : mengThunder.raise
       : mengPoses && fighter.mengClone ? fighter.mengClone.phase === 'dash' ? mengPoses.slash : mengPoses.parry
@@ -7429,6 +8177,10 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       : mantis && fighter.attack > 0 ? mantis.strike
       : mantis && mantisGuard(fighter) ? mantis.guard
       : mantis ? mantis.ready
+      : poses.lui && fighter.luiEnhance !== null ? fighter.luiEnhance < LUI_ENHANCE.spin ? poses.lui.raise : poses.lui.slam
+      : poses.lui && luiCharge ? luiCharge.phase === 'lift' || luiCharge.phase === 'swing' ? poses.lui.hold
+        : poses.lui.couch[luiCharge.phase === 'windup' ? CAVALRY_GALLOP_FRAMES : Math.floor(fighter.phase / (Math.PI * 2) * CAVALRY_GALLOP_FRAMES) % CAVALRY_GALLOP_FRAMES]
+      : luiSweeping ? poses.lui!.sweep[moving < 0.15 ? CAVALRY_GALLOP_FRAMES : Math.floor(fighter.phase / (Math.PI * 2) * CAVALRY_GALLOP_FRAMES) % CAVALRY_GALLOP_FRAMES]
       : poses.cavalry ? knife ? fighter.attack > 0 ? knife.poke : knife.ready : poses.cavalry.frames[fighter.attack > 0 ? Math.min(3, 1 + Math.floor((1 - fighter.attack) * 3)) : 0]
         [moving < 0.15 ? CAVALRY_GALLOP_FRAMES : Math.floor(fighter.phase / (Math.PI * 2) * CAVALRY_GALLOP_FRAMES) % CAVALRY_GALLOP_FRAMES]
       : spartanPoses ? spartanCharge ? spartanCharge.phase === 'dash' ? knife?.bash ?? spartanPoses.bash : knife?.guard ?? spartanPoses.guard
@@ -7451,6 +8203,7 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       : meiPoses && meditating ? meiPoses.meditate
       : meiPoses && fighter.attack > 0 ? fighter.meiHand ? meiPoses.throwBack : meiPoses.throwFront
       : meiFox ? meiFox.ready
+      : kunlunPose && kunlunPose !== 'ready' ? poses.kunlun![kunlunPose]
       : flightFrame !== null ? flyingFrames![flightFrame]
       : (flying || hovering) && fighter.species !== 'vampire' ? poses.flying : lightningCharge ? poses.casting : charging ? poses.charging : fighter.slam > 0 ? poses.slamming
       : fighter.casting > 0 ? poses.casting : fighter.hammerOut
@@ -7470,11 +8223,12 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     }
     if (fighter.hidden) c.globalAlpha = 0.24
     else if (fighter.mantisCloak > 0) c.globalAlpha = 0.12
+    else if (fighter.kunlunOwner) c.globalAlpha = (battle.tick + fighter.id * 7) % 23 < 2 ? 0.4 : 0.78 // a lightning clone flickers
     if (transform !== null) drawMeditationAura(c, battle.tick, MEI_AURA)
     if (yanCat?.phase === 'charge') drawYanColossus(c, 'charge', yanCat.time / CAT.charge, battle.tick)
     if (yanDemon || yanFade > 0) drawYanDemonAura(c, battle.tick, yanDemon ? yanTurn ? 1.8 : 1 : yanFade * 0.8)
     if (meditating && poses.yan) drawYanMeditation(c, rest!.time, battle.tick, yanLift / def.size, true)
-    else if (meditating) drawMeditationAura(c, battle.tick, thorMeditating ? ['#3e9de8', '#b5eaff'] : poses.mei ? MEI_AURA : mengThunder ? ['#f2c230', '#fff1a8'] : mengBody ? ['#ff7a1e', '#ffc9a0'] : poses.meng ? ['#4d9bff', '#9fd2ff'] : undefined)
+    else if (meditating) drawMeditationAura(c, battle.tick, thorMeditating ? ['#3e9de8', '#b5eaff'] : poses.kunlun ? ['#4aa8ff', '#bfe6ff'] : poses.mei ? MEI_AURA : mengThunder ? ['#f2c230', '#fff1a8'] : mengBody ? ['#ff7a1e', '#ffc9a0'] : poses.meng ? ['#4d9bff', '#9fd2ff'] : undefined)
     if (meditating && poses.mei && !fighter.zombie) drawMeiMeditate(c, battle.tick, fighter.id)
     if (saintFan) drawSwordFan(c, Math.floor(fighter.swordStack), battle.tick, fighter.id, false, saintJab, saintOrbit, saintScale, fighter.saintBamboo, saintHelpers)
     if (bloodlust || callingHelp) {
@@ -7485,7 +8239,23 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     if (meiFox) drawFoxTails(c, battle.tick, fighter.id, -9, -13, 34, moving)
     else if (fighter.species === 'mei-fox') drawFoxTails(c, battle.tick, fighter.id, -10, -15, 19, moving)
     if (kasaya > 0) drawMengKasaya(c, battle.tick, kasaya, false)
+    const luiFade = fighter.species === 'luifeng' && !fighter.zombie ? Math.min(1, fighter.luiAura / 0.5) : 0
+    drawLuiAura(c, battle.tick, luiFade, fighter.id, false)
     c.drawImage(body ?? sprite, -24, -44, 48, 48)
+    drawLuiAura(c, battle.tick, luiFade, fighter.id, true)
+    if (poses.lui && fighter.luiEnhance !== null && fighter.luiEnhance < LUI_ENHANCE.spin) drawLuiSpin(c, fighter.luiEnhance / LUI_ENHANCE.spin * Math.PI * 4)
+    if (luiSwing) drawLuiSweepSpear(c, luiSwing.time / LUI_SWEEP.time)
+    if (poses.lui && luiCharge) {
+      const [tipX, tipY] = LUI_COUCH_TIP
+      if (luiCharge.phase === 'windup') drawInkCharge(c, tipX, tipY, luiCharge.time / LUI_CHARGE.windup, luiCharge.time, fighter.id)
+      else if (luiCharge.phase === 'dash') drawInkSlash(c, tipX, tipY, 0, 44, luiCharge.time / INK_SLASH_LIFE)
+      else drawLuiHeld(c, luiSpearAngle(luiCharge.phase, luiCharge.time))
+    }
+    if (kunlunPose) drawKunlunBlade(c, kunlunPose, battle.tick, kunlunPower, kunlunSway)
+    else if (kunlunPower > 0) drawKunlunBlade(c, 'ready', battle.tick, kunlunPower)
+    if (poses.kunlun && fighter.kunlunShield > 0 && !fighter.zombie) {
+      drawKunlunShield(c, battle.tick, Math.min(1, fighter.kunlunShield / 0.5, (KS.shield.duration - fighter.kunlunShield) / 0.15), fighter.id)
+    }
     if (kasaya > 0) drawMengKasaya(c, battle.tick, kasaya, true)
     if (meditating && poses.yan) drawYanMeditation(c, rest!.time, battle.tick, yanLift / def.size, false)
     if (yanStab >= 0 && yanStab < 0.2) drawYanStab(c, yanStab / 0.2)
@@ -8040,6 +8810,50 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     drawHammer(c)
     c.restore()
   }
+  for (const wall of battle.kunlunWalls) {
+    const W = KUNLUN_SKILLS.wall, fade = Math.min(1, wall.life / 0.4, (W.life - wall.life) / 0.15)
+    for (let k = 1; k < wall.points.length; k++) {
+      const a = wall.points[k - 1], b = wall.points[k]
+      drawKunlunWall(c, a.x, a.y, b.x, b.y, W.height, fade, battle.tick, wall.seed + k)
+    }
+  }
+  for (const wave of battle.kunlunCrescents) {
+    drawKunlunCrescent(c, wave.x, wave.y, Math.atan2(wave.ny, wave.nx), KUNLUN_SKILLS.crescent.width, Math.min(1, wave.left / 40), battle.tick)
+  }
+  for (const f of battle.fighters) { // Lightning Step: a ring of lightning chasing him round his target
+    const step = f.kunlun
+    if (step?.kind !== 'step' || step.time >= KUNLUN_SKILLS.step.circle || f.hp <= 0) continue
+    const S = KUNLUN_SKILLS.step, t = step.target, ring = fighterDef(t).radius + S.ring
+    const a = step.angle! + step.spin! * step.time / S.circle * S.laps * Math.PI * 2, seed = f.id * 11 + Math.floor(battle.tick / 2)
+    for (let k = 0; k < 3; k++) {
+      const a1 = a - step.spin! * (k + 1) * 0.6, a2 = a - step.spin! * k * 0.6
+      c.save()
+      c.globalAlpha = 1 - k * 0.28
+      drawLightning(c, t.x + Math.cos(a1) * ring, t.y + Math.sin(a1) * ring - 16, t.x + Math.cos(a2) * ring, t.y + Math.sin(a2) * ring - 16, 0.6 - k * 0.12, seed + k * 5, 1, 0.2)
+      c.restore()
+    }
+  }
+  for (const f of battle.fighters) {
+    if (f.kunlun?.kind !== 'sparks' || f.hp <= 0) continue
+    const grow = Math.min(1, f.kunlun.time / 0.2)
+    for (let k = 0; k < KUNLUN_SKILLS.sparks.count; k++) {
+      const at = battle.kunlunSparkAt(f, k, f.kunlun.time)
+      c.save()
+      c.globalAlpha = grow
+      drawKunlunSpark(c, at.x, at.y - 22 * fighterDef(f).size, battle.tick, f.id * 3 + k)
+      c.restore()
+    }
+  }
+  for (const daze of battle.kunlunDazed) drawMengConfused(c, daze.target.x, daze.target.y, battle.tick)
+  for (const bolt of battle.kunlunBolts) drawKunlunSpark(c, bolt.x, bolt.y - 22, battle.tick, bolt.seed, bolt.nx, bolt.ny)
+  for (const bolt of battle.kunlunLightning) { // full strength for the first half of its life, then flickering out
+    const fade = bolt.life / bolt.max, seed = Math.round(bolt.seed) + Math.floor(battle.tick / 2)
+    if (bolt.flash) drawLightningFlash(c, bolt.x2, bolt.y2, 30 * bolt.width, fade, seed)
+    c.save()
+    c.globalAlpha = Math.min(1, fade * 2) * (fade < 0.5 && battle.tick % 4 < 2 ? 0.55 : 1)
+    drawLightning(c, bolt.x1, bolt.y1, bolt.x2, bolt.y2, bolt.width * (1 + Math.max(0, fade - 0.75) * 2), seed, bolt.width >= 1 ? 3 : 1)
+    c.restore()
+  }
   c.strokeStyle = '#67cfff'
   for (const bolt of battle.bolts) {
     const dx = bolt.tx - bolt.x, dy = bolt.ty - bolt.y, distance = Math.hypot(dx, dy) || 1
@@ -8084,6 +8898,8 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     c.restore()
   }
   for (const sha of battle.mengShas) drawMengSha(c, sha.x, sha.y, sha.color, sha.age, sha.seed, sha.angle, sha.size)
+  for (const fist of battle.shaFists) drawShaFist(c, fist.x, fist.y, fist.angle, MENG_SHA[fist.k % MENG_SHA.length], fist.age, fist.seed, fist.size)
+  for (const shot of battle.shaShots) drawShaFistShot(c, shot.x, shot.y - 18, Math.atan2(shot.vy, shot.vx), MENG_SHA[shot.k % MENG_SHA.length], shot.seed, battle.tick / 60)
   for (const f of battle.fighters) {
     const fists = f.mengFists
     if (!fists || f.hp <= 0) continue
@@ -8150,6 +8966,10 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       }
     }
     if (assault.phase === 'feint' && !assault.struck) drawMengConfused(c, target.x, target.y, battle.tick)
+  }
+  for (const sweep of battle.luiSweeps) {
+    const owner = sweep.owner
+    drawLuiSweep(c, owner.x, owner.y - owner.elevation, fighterDef(owner).radius + LUI_SWEEP.reach, sweep.facing, sweep.time)
   }
   for (const breeze of battle.mengBreezes) {
     if (breeze.clones) {

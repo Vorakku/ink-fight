@@ -442,9 +442,9 @@ round his body, re-forked every couple of frames, and every so often a bolt with
 spot nearby, leaving a spark burst and a small ink splash. It is only drawn and deals no damage.
 His Lightning and Thunder Saint form's ultimate, Divine Thunder Slash (神雷斩, `MENG_GOD`), is a once-per-fight cinematic
 in ink with gold light always sitting on ink, never bare neon. He jumps to the centre and hovers over a gold ring
-dripping ink motes, his sash and hair lifting. Behind him black smoke rises off the ground and climbs, a billowing
-front, into a tall arched double door of nothing but smoke, no frame (`drawMengGod`), smoke curling up its sides and a gold-to-orange gradient glowing along its edges and down the seam where its leaves meet. Two big hooked eagle eyes on its
-leaves, ink-lidded under heavy brows, appear shut, then open wide onto pure blue-white light (no iris or pupil), flaring a blue light trail off
+dripping ink motes, his sash and hair lifting. Behind him fire rises off the ground and climbs, a billowing
+front, into a tall arched double door that is a colossal face of fire and lightning, no frame (`drawMengGod`): deep blue leaves fading to embers at the base, veined with flame, a fire spiral on each side of the forehead, flame wings sweeping up and out from its sides with a blue inner rim, lightning crackling through the fire, and light glowing electric blue to orange along its edges and down the seam where its leaves meet. Two big hooked eyes on its
+leaves, blue-rimmed under brows of blue fire, with a blue flame burning on the seam between them, appear shut, then open wide onto pure blue-white light (no iris or pupil), blue fire streaming up and out off
 their corners. The leaves narrow apart and the whole screen goes white (`drawMengGodLight`), then fades away onto a red-gold
 glow, revealing the divine lightning emperor seated behind the door and towering over it (`drawMengAvatar`):
 a majestic god on a stone seat, at his ease and menacing, never a monster. He leans left onto his left knee,
@@ -464,3 +464,49 @@ branching cracks, a blazing gold outer edge, a thinner gold inner rim, glitterin
 split-hair tail where it starts and a sharp tip, lightning threads and red ink thrown off. The name is a vertical column
 of white dry-brush characters (pale strokes split by bare-paper streaks, ragged hairs, an ink edge) brushed in top to
 bottom beside the crescent, with a small red 秘技 seal stamped under them. Door and god dissolve into drifting smoke.
+
+Lui Feng (`luifeng.ts`, Hero), a legendary army general: 900 HP, 30 damage, 240 px/s, size 2.3. He rides a white
+warhorse with a long flowing mane and tail, gold bridle and crest, a gold breast collar with red tassels and a black,
+gold-trimmed saddle cloth. He wears black scale armour with gold trim, a gold dragon pauldron and lion belt, a red robe
+over the horse's flank and a great red cape embroidered with gold clouds; his long black hair streams from under a gold
+crown with bead strands. His halberd has a black shaft, a gold butt spike, a leaf point, twin engraved crescent blades
+and a red tassel on a white bead. His sprite is drawn 10% smaller about the hooves (`FIT`) so the crown and halberd fit,
+and baked at 4× so he stays sharp at his size. He rides with the cavalry's gallop-and-circle movement, but never falls
+from his horse. His normal attack hits every grounded enemy within 60 px of his body at once (`LUI_SWEEP.reach`): the halberd turns
+one full sweep flat round him in 0.32 s while he keeps galloping (`drawLuiSweepSpear`, foreshortening as it passes behind
+and in front, its head locked to the trail's). The swing is one wide blue blade trail (`drawLuiSweep`) on the ground's perspective ellipse, nothing else: a pale-blue
+glow, blue body, pale and white cores and a razor-white outer edge, fat (52 px, `LUI_SWEEP.width`) almost from its
+very start and sharp only at its ends. It cuts in, grows to a near-full ring, then its tail chases the head away; it is
+gone within 0.75 s.
+
+Enhance (`LUI_ENHANCE`) fires when an enemy is within 180 px: he stands his horse, whirls the halberd flat above his head
+twice in 0.8 s (drawn live by `drawLuiSpin`, a squashed spin with a pale gold blur disc, since it reaches past the
+sprite), then slams it down: every grounded enemy within 130 px takes 30 damage and 360 outward knockback, with a gold
+ring, dust and a crater. For 10 s a gold aura (`drawLuiAura`) holds: a pulsing ground ring and six motes orbiting on a
+tilted ring that passes behind him (drawn before his sprite) and in front (after). In it he moves 1.35× faster, hits and
+knocks back 1.5× harder and takes 40% less enemy damage. 18-second cooldown; stun, fear, freeze, a lure or a grab
+cancels the cast with the cooldown spent.
+
+Piercing Charge (`LUI_CHARGE`) fires on a target 90–420 px away: he leans back about the hip with the halberd couched
+level and gathers ink-wind into its point for 1 s, then gallops at 560 px/s (steering after the target, up to 1.1 s).
+On contact he pierces for 60 damage (×1.5 in the Enhance aura); a target no wider than him is carried on the spear
+point (`heldBy`), raised high over 0.55 s and swung forward and down over 0.3 s (`luiSpearAngle`, drawn live by
+`drawLuiHeld`), then flung 280 px ahead through the shared thrown flight (arc, tumble, landing damage and splash).
+Wider targets are only hit and knocked back. 9-second cooldown. A stun, fear, freeze, lure or grab, his death or the
+victim's breaks it, and a carried victim falls from wherever it was held.
+
+Ink-wind charge VFX (`inkcharge.ts`) is reusable for any weapon charge. `drawInkCharge(c, ax, ay, progress, elapsed,
+seed, options)` draws in the caller's current space (a fighter's mirrored, size-scaled sprite space), so it follows
+movement, facing and scale; `(ax, ay)` is the weapon anchor, e.g. a spear point or blade, which the caller derives from
+the pose geometry (`LUI_COUCH_TIP`). It is ink pulled out of the air into the weapon, never emitted outward: no rings,
+orbs, glows or particle bursts. 5–8 tapered ribbons (`INK_CHARGE.ribbons`, capped at `INK_MAX_RIBBONS`) each flow along
+their own quadratic Bézier from a point `radius` out to the anchor, with sine sway that settles at the anchor, a
+width profile that tapers to both ends, and three fills: a soft smoke-gray edge, a deep-ink or dark-gray body and a
+near-black centre (`#9a9aa8`, `#221f33`/`#50505e`, `#15151d`). Each stream fades in where it is born and out as the
+weapon swallows it, so its loop never shows. Phases follow progress: awakening (0–20%) a few faint, slow wisps;
+gathering (20–65%) every stream joins and flows in; compression (65–95%) faster, tighter, thinner and longer streams and
+a small dark knot of wind arcs turning round the anchor. Everything is deterministic in (progress, elapsed, seed) and
+the flow speeds up through a p³ phase term, so nothing jumps or flickers; drawing allocates nothing beyond scratch
+buffers. Release is `drawInkSlash`: a tapered dry-brush stroke shooting forward from the anchor that fades within
+`INK_SLASH_LIFE` (0.18 s). Only draw it while a fighter is actually charging, and let the charge state reset with the
+skill.

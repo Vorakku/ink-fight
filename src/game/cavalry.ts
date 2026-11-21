@@ -10,7 +10,7 @@ export const CAVALRY = {
 export const CAVALRY_RIDE = { orbit: 22, approach: 90, swap: 84, slash: 34, dismount: 0.4, fall: 0.8 } as const
 export const CAVALRY_FOOT = { radius: 10, speed: 90, damage: 14, range: 40, cooldown: 0.8, knockback: 60, size: 1.1 } as const
 
-type Swing = 0 | 1 | 2 | 3 // 0 ride, then slash windup → sweep → follow-through
+export type Swing = 0 | 1 | 2 | 3 // 0 ride, then slash windup → sweep → follow-through
 type FootPose = 'ready' | 'poke'
 export const CAVALRY_GALLOP_FRAMES = 8 // frame index 8 is the horse standing still
 
@@ -35,7 +35,7 @@ function spear(c: C, x: number, y: number, angle: number, back: number, front: n
 }
 
 // Crescent trail behind the blade: wide pale smear with a bright leading edge.
-function swoosh(c: C, cx: number, cy: number, rx: number, ry: number, from: number, to: number) {
+export function swoosh(c: C, cx: number, cy: number, rx: number, ry: number, from: number, to: number) {
   c.save()
   c.lineCap = 'round'
   c.strokeStyle = 'rgba(238,244,246,.55)'; c.lineWidth = 4.5
@@ -46,7 +46,7 @@ function swoosh(c: C, cx: number, cy: number, rx: number, ry: number, from: numb
 }
 
 // One horse leg: s is its place in the stride; the lower leg folds back while it swings forward.
-function horseLeg(c: C, hx: number, hy: number, s: number, front: boolean, stand: boolean, fill: string) {
+export function horseLeg(c: C, hx: number, hy: number, s: number, front: boolean, stand: boolean, fill: string) {
   const a = stand ? 0 : 0.55 * Math.sin(s), lift = stand ? 0 : Math.max(0, Math.cos(s))
   const upper = a + (front ? 0 : 0.3), lower = a - (front ? 1.6 : 1.2) * lift - (front ? 0 : 0.3)
   const kx = hx + Math.sin(upper) * 7, ky = hy + Math.cos(upper) * 7

@@ -156,6 +156,7 @@ button:focus-visible {
 }
 
 .tray {
+  transition: opacity 0.25s;
   position: absolute;
   bottom: calc(14px + env(safe-area-inset-bottom));
   left: 50%;
@@ -163,6 +164,16 @@ button:focus-visible {
   display: flex;
   flex-direction: column;
   max-width: calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right));
+}
+
+.tray.tucked {
+  opacity: 0;
+  pointer-events: none; /* clicks land on the battlefield while it is away */
+}
+
+.tray.tucked:focus-within {
+  opacity: 1; /* tabbing into it brings it back */
+  pointer-events: auto;
 }
 
 .categories {
@@ -211,6 +222,35 @@ button:focus-visible {
   pointer-events: none;
 }
 
+/* The selected fighter's forms (dragon stages, ant castes, hero transformations). */
+.variants {
+  display: flex;
+  justify-content: safe center;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0 4px 4px;
+}
+
+.variants button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px 2px 4px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.variants button[aria-pressed='true'] {
+  background: #ffe45c;
+}
+
+.variants img {
+  width: 30px;
+  height: 30px;
+  pointer-events: none;
+}
+
 @media (max-width: 720px) {
   .title { top: calc(8px + env(safe-area-inset-top)); left: calc(70px + env(safe-area-inset-left)); font-size: 28px; transform: rotate(-2deg); }
   .actions { top: calc(52px + env(safe-area-inset-top)); gap: 6px; }
@@ -223,6 +263,8 @@ button:focus-visible {
   .tray-items { gap: 8px; padding-top: 8px; }
   .fighter { width: 62px; font-size: 12px; }
   .fighter img { width: 40px; height: 40px; }
+  .variants button { font-size: 13px; }
+  .variants img { width: 24px; height: 24px; }
 }
 
 /* Phones in landscape: little height, so tuck the title away and shrink the tray. */

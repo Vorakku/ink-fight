@@ -1,7 +1,7 @@
 // Run only with the owner's permission: node checks/mengchuan.check.ts
 import assert from 'node:assert/strict'
 import { Battle, type Fighter } from '../src/game/battle.ts'
-import { MENG_BREEZE, MENG_CHUAN, MENG_CLONE, MENG_PARRY } from '../src/game/mengchuan.ts'
+import { MENG_ASSAULT, MENG_BREEZE, MENG_CHUAN, MENG_CLONE, MENG_PARRY } from '../src/game/mengchuan.ts'
 
 // Autumn Breeze: he dashes through the target, cutting and binding every enemy on the line once, sparing allies;
 // the painting plays after the dash and then clears.
@@ -68,6 +68,23 @@ for (const [roll, parried] of [[MENG_PARRY.chance - 0.01, true], [MENG_PARRY.cha
   assert.ok(meng.x < foe.x, 'He ends behind the enemy')
   assert.equal(foe.hp, 1000 - MENG_CLONE.damage, 'which takes the cut')
   assert.ok(foe.stun > 0, 'and freezes')
+}
+
+// Demon Assault (Divine-Demon form): a barrage of sha fists, every one landing on a target straight ahead.
+{
+  const battle = new Battle(() => 0.5) // no fan: every fist flies dead on
+  battle.resize(1600, 1000)
+  const meng = battle.spawn(500, 500, 'red', 'mengchuan', false, 1)! // variant 1: the Divine-Demon form
+  meng.skillCooldown = meng.mengSonicCooldown = meng.mengLotusCooldown = meng.mengKasayaCooldown = 99
+  const foe = battle.spawn(650, 500, 'blue', 'goose')!
+  foe.hp = 1000
+  foe.stun = 100
+  battle.step()
+  assert.ok(meng.mengAssault, 'He starts the barrage')
+  for (let i = 0; i < 180 && meng.mengAssault; i++) battle.step()
+  for (let i = 0; i < 30; i++) battle.step()
+  assert.equal(battle.shaShots.length, 0, 'Every fist has landed or gone')
+  assert.ok(foe.hp <= 1000 - MENG_ASSAULT.count * MENG_ASSAULT.damage, `All ${MENG_ASSAULT.count} fists hit (${foe.hp})`)
 }
 
 console.log('mengchuan checks passed')
