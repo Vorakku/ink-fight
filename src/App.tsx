@@ -57,7 +57,7 @@ export default function App() {
     window.addEventListener('keydown', audio.unlock)
     const sprites = buildSprites()
     setIcons({
-      ...Object.fromEntries(SPECIES.map((species) => [species, sprites[species].ffa.ready.toDataURL()])),
+      ...Object.fromEntries(SPECIES.map((species) => [species, UNITS[species].buildSprite(undefined).toDataURL()])),
       water: buildWaterIcon().toDataURL(),
       tower: buildTowerIcon().toDataURL(),
       tree: buildTreeIcon().toDataURL(),

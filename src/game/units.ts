@@ -9,6 +9,7 @@ import { buildNinjaSprite, NINJA } from './ninja.ts'
 import { buildSpartanSprite, SPARTAN } from './spartan.ts'
 import { buildCavalryFootSprite, buildCavalryFrames, buildCavalrySprite, CAVALRY } from './cavalry.ts'
 import { buildLuiFengFrames, buildLuiFengPoses, buildLuiFengSprite, LUI_FENG } from './luifeng.ts'
+import { buildLuiFootSprite, type LuiWeapon } from './luifeng-foot.ts'
 import { buildMantisSprite, buildMantisShedSprite, MANTIS, type MantisForm } from './mantis.ts'
 import { buildZombieSprite, buildZombieVariant, ZOMBIE } from './zombie.ts'
 import { buildVampireSprite, VAMPIRE } from './vampire.ts'
@@ -127,6 +128,7 @@ type Poses = {
   // Unhorsed cavalry reuse the Spartan knife slot so shocked/zombie/corpse drawing works unchanged.
   cavalry?: { frames: HTMLCanvasElement[][]; foot: NonNullable<Poses['spartan']>['knife'] }
   lui?: ReturnType<typeof buildLuiFengPoses>
+  luiFoot?: ReturnType<typeof buildLuiFootPoses>
   rex?: ReturnType<typeof buildRexParts>
   rexAlpha?: RexVariant
   rexBlack?: RexVariant
@@ -159,6 +161,21 @@ const walkCycles = new WeakMap<HTMLCanvasElement, HTMLCanvasElement[]>()
 function walks(pose: HTMLCanvasElement, build: (step: number) => HTMLCanvasElement, zombie?: HTMLCanvasElement) {
   walkBuilders.set(pose, build)
   if (zombie) walkBuilders.set(zombie, (step) => buildZombieVariant(build(step)))
+}
+
+// Lui Feng unhorsed: a standing, walking pose per weapon, his foot skill poses and a foot zombie.
+function buildLuiFootPoses(color: string | undefined) {
+  const stand = {} as Record<LuiWeapon, HTMLCanvasElement>
+  for (const weapon of ['sword', 'spear', 'bow'] as const) {
+    stand[weapon] = buildLuiFootSprite(color, weapon)
+    walks(stand[weapon], (step) => buildLuiFootSprite(color, weapon, 'stand', step))
+  }
+  const zombie = buildZombieVariant(stand.spear)
+  walks(zombie, (step) => buildZombieVariant(buildLuiFootSprite(color, 'spear', 'stand', step)))
+  const pose = (weapon: LuiWeapon, name: Parameters<typeof buildLuiFootSprite>[2]) => buildLuiFootSprite(color, weapon, name)
+  return { stand, zombie, slash: pose('sword', 'slash'), thrust: pose('spear', 'thrust'), raise: pose('spear', 'raise'),
+    throw: pose('spear', 'throw'), back: pose('spear', 'back'), spin: pose('sword', 'spin'), plant: pose('sword', 'plant'),
+    butt: pose('spear', 'butt'), fallen: pose('spear', 'fallen') }
 }
 
 type SaintPoses = { stand: HTMLCanvasElement; slash: HTMLCanvasElement; meditate: HTMLCanvasElement; fish: HTMLCanvasElement }
@@ -221,158 +238,165 @@ export function buildSprites(): Sprites {
   for (const species of SPECIES) {
     const sides = {} as Record<Team, Poses>
     for (const team of ['red', 'blue', 'ffa'] as const) {
-      const color = team === 'ffa' ? undefined : TEAM_COLORS[team]
-      const ready = UNITS[species].buildSprite(color)
-      const empty = species === 'thor' ? buildThorSprite(color, 'empty') : ready
-      const headX = species === 'mei-fox' ? 37 : species === 'cavalry' || species === 'luifeng' ? 22 : species === 'ant' || species.startsWith('ant-') ? 35 : species === 'mantis' ? 30 : species === 'spartan' ? 29 : species === 'vampire' ? 28 : species === 'ninja' || species === 'zombie' ? 24 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' ? 25 : species === 'siren' ? 26 : species === 'rex' ? 32 : 34
-      const headY = species === 'mei-fox' ? 23 : species === 'luifeng' ? 10 : species === 'cavalry' ? 6 : species === 'ant' || species.startsWith('ant-') ? 26 : species === 'zombie' || species === 'spartan' || species === 'mantis' ? 14 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' || species === 'siren' ? 13 : species === 'rex' || species === 'dragon' ? 11 : species === 'phoenix' || species === 'ninja' || species === 'vampire' ? 15 : 12
-      const shocked = buildShockedSprite(ready, headX, headY)
-      const undead = species === 'zombie' ? ready : buildZombieVariant(empty)
-      const undeadChick = species === 'phoenix' ? buildZombieVariant(buildPhoenixSprite(color, 'chick')) : undefined
-      const walker = WALKERS[species]
-      // A zombie is its own undead pose, and Thor's undead pose is the hammerless one.
-      if (walker) walks(ready, (step) => walker(color, step), species === 'zombie' || species === 'thor' ? undefined : undead)
-      if (species === 'thor') walks(empty, (step) => buildThorSprite(color, 'empty', step), undead)
-      const flyingFrames = species === 'goose' || species === 'dragon' || species === 'phoenix' || species === 'vampire' || species === 'ant-fly'
-        ? Array.from({ length: 8 }, (_, frame) => {
-            const flap = Math.sin(frame * Math.PI / 4)
-            return species === 'ant-fly' ? buildAntFlySprite(color, flap) : species === 'vampire' ? buildVampireSprite(color, flap) : species === 'goose' ? buildGooseSprite(color, true, flap)
-              : species === 'dragon' ? buildDragonSprite(color, flap) : buildPhoenixSprite(color, 'adult', flap)
-          })
-        : undefined
-      sides[team] = {
-        colony: species === 'anthill' ? Array.from({ length: 5 }, (_, i) => buildAnthillSprite(color, i + 1)) : undefined,
-        dragon: species === 'dragon' ? DRAGON_FORMS.map((_, form) => {
-          const ready = buildDragonSprite(color, undefined, form as DragonForm), zombie = buildZombieVariant(ready)
-          walks(ready, (step) => buildDragonSprite(color, undefined, form as DragonForm, false, step), zombie)
-          const frames = Array.from({ length: 8 }, (_, frame) =>
-            buildDragonSprite(color, Math.sin(frame * Math.PI / 4), form as DragonForm))
-          const breathing = buildDragonSprite(color, undefined, form as DragonForm, true)
-          const breathingFrames = Array.from({ length: 8 }, (_, frame) =>
-            buildDragonSprite(color, Math.sin(frame * Math.PI / 4), form as DragonForm, true))
-          return { ready, sleeping: buildSleepingDragonSprite(color, form as DragonForm), flyingFrames: frames, breathing, breathingFrames, shocked: buildShockedSprite(ready, 34, 11),
-            shockedFlyingFrames: frames.map((frame) => buildShockedSprite(frame, 34, 11)), zombie }
-        }) : undefined,
-        zombie: {
-          ready: undead,
-          shocked: buildShockedSprite(undead, headX, headY),
-          chick: undeadChick,
-          shockedChick: undeadChick ? buildShockedSprite(undeadChick, 24, 26) : undefined,
-        },
-        ninja: species === 'ninja' ? { poke: buildNinjaSprite(color, 'poke'), slash: buildNinjaSprite(color, 'slash') } : undefined,
-        meng: species === 'mengchuan' ? { slash: buildMengChuanSprite(color, 'slash'), parry: buildMengChuanSprite(color, 'parry'), meditate: buildMengChuanSprite(color, 'meditate'), raise: buildMengChuanSprite(color, 'raise'),
-          thunder: (() => {
-            const ready = buildMengChuanSprite(color, 'ready', undefined, 'thunder')
-            walks(ready, (step) => buildMengChuanSprite(color, 'ready', step, 'thunder'))
-            return { ready, slash: buildMengChuanSprite(color, 'slash', undefined, 'thunder'), parry: buildMengChuanSprite(color, 'parry', undefined, 'thunder'),
-              meditate: buildMengChuanSprite(color, 'meditate', undefined, 'thunder'), raise: buildMengChuanSprite(color, 'raise', undefined, 'thunder') }
-          })(),
-          body: (() => {
-            const ready = buildMengChuanSprite(color, 'ready', undefined, 'body')
-            walks(ready, (step) => buildMengChuanSprite(color, 'ready', step, 'body'))
-            return { ready, punch: buildMengChuanSprite(color, 'punch', undefined, 'body'), parry: buildMengChuanSprite(color, 'parry', undefined, 'body'),
-              meditate: buildMengChuanSprite(color, 'meditate', undefined, 'body'), raise: buildMengChuanSprite(color, 'raise', undefined, 'body'),
-              hook: buildMengChuanSprite(color, 'hook', undefined, 'body'), slam: buildMengChuanSprite(color, 'slam', undefined, 'body') }
-          })() } : undefined,
-        saint: species === 'swordsaint' ? { ...buildSaintPoses(color, false),
-          bamboo: { ready: buildSwordSaintSprite(color, 'ride', undefined, true), ...buildSaintPoses(color, true) } } : undefined,
-        yan: species === 'yanjin' ? { slice: buildYanJinSprite(color, 'slice'), raise: buildYanJinSprite(color, 'raise'),
-          slam: buildYanJinSprite(color, 'slam'), meditate: buildYanJinSprite(color, 'meditate'), lift: buildYanJinSprite(color, 'lift'),
-          pierce: buildYanJinSprite(color, 'pierce'),
-          charge: buildYanJinSprite(color, 'charge'), cleave: buildYanJinSprite(color, 'cleave'), seppuku: buildYanJinSprite(color, 'seppuku'),
-          idle: (() => {
-            const idle = buildYanJinSprite(color, 'idle')
-            walks(idle, (step) => buildYanJinSprite(color, 'idle', step))
-            return idle
-          })(),
-          demon: (() => {
-            const ready = buildYanDemonSprite(color, 'ready')
-            walks(ready, (step) => buildYanDemonSprite(color, 'ready', step))
-            return { ready, slash: buildYanDemonSprite(color, 'slash'), raise: buildYanDemonSprite(color, 'raise'),
-              plant: buildYanDemonSprite(color, 'plant'), lift: buildYanDemonSprite(color, 'lift'), roar: buildYanDemonSprite(color, 'roar') }
-          })() } : undefined,
-        mei: species === 'meiyuanzhi' ? { meditate: buildMeiSprite(color, 'meditate'),
-          throwFront: buildMeiSprite(color, 'throwFront'), throwBack: buildMeiSprite(color, 'throwBack'),
-          fox: (() => {
-            const ready = buildMeiSprite(color, 'ready', undefined, true)
-            walks(ready, (step) => buildMeiSprite(color, 'ready', step, true))
-            return { ready, meditate: buildMeiSprite(color, 'meditate', undefined, true),
-              throwFront: buildMeiSprite(color, 'throwFront', undefined, true),
-              throwBack: buildMeiSprite(color, 'throwBack', undefined, true), shocked: buildShockedSprite(ready, 25, 13) }
-          })() } : undefined,
-        kunlun: species === 'kunlun' ? { raise: buildKunlunSprite(color, 'raise'), point: buildKunlunSprite(color, 'point'),
-          slash: buildKunlunSprite(color, 'slash'), ghost: buildKunlunGhost(ready) } : undefined,
-        mantis: species === 'mantis' ? Array.from({ length: 4 }, (_, index) => {
-          const form = index as MantisForm, ready = buildMantisSprite(color, 'ready', form), zombie = buildZombieVariant(ready)
-          const carry = buildMantisSprite(color, 'carry', form), guard = buildMantisSprite(color, 'guard', form)
-          walks(ready, (step) => buildMantisSprite(color, 'ready', form, step), zombie)
-          walks(carry, (step) => buildMantisSprite(color, 'carry', form, step))
-          walks(guard, (step) => buildMantisSprite(color, 'guard', form, step))
-          return { ready, strike: buildMantisSprite(color, 'strike', form), carry,
-            hop: buildMantisSprite(color, 'hop', form), guard,
-            shocked: buildShockedSprite(ready, 30, 14), zombie, shockedZombie: buildShockedSprite(zombie, 30, 14),
-            shed: buildMantisShedSprite(form) }
-        }) : undefined,
-        spartan: species === 'spartan' ? (() => {
-          // Ready and guard (formation march) poses walk, for every weapon and the commander.
-          const walking = (pose: 'ready' | 'guard', weapon: 'spear' | 'knife', commander: boolean) => {
-            const sprite = buildSpartanSprite(color, pose, weapon, commander)
-            walks(sprite, (step) => buildSpartanSprite(color, pose, weapon, commander, step))
-            return sprite
-          }
-          const knife = buildSpartanSprite(color, 'ready', 'knife'), zombie = buildZombieVariant(knife)
-          walks(knife, (step) => buildSpartanSprite(color, 'ready', 'knife', false, step), zombie)
-          const commander = walking('ready', 'spear', true)
-          return { poke: buildSpartanSprite(color, 'poke'), bash: buildSpartanSprite(color, 'bash'),
-            guard: walking('guard', 'spear', false), throwing: buildSpartanSprite(color, 'throw'),
-            commander: { ready: commander, poke: buildSpartanSprite(color, 'poke', 'spear', true),
-              bash: buildSpartanSprite(color, 'bash', 'spear', true), guard: walking('guard', 'spear', true),
-              throwing: buildSpartanSprite(color, 'throw', 'spear', true), shocked: buildShockedSprite(commander, 29, 14) },
-            knife: { ready: knife, poke: buildSpartanSprite(color, 'poke', 'knife'),
-              bash: buildSpartanSprite(color, 'bash', 'knife'), guard: walking('guard', 'knife', false),
-              shocked: buildShockedSprite(knife, 29, 14), zombie, shockedZombie: buildShockedSprite(zombie, 29, 14) } }
-        })() : undefined,
-        cavalry: species === 'cavalry' || species === 'luifeng' ? (() => {
-          const foot = buildCavalryFootSprite(color), poke = buildCavalryFootSprite(color, 'poke'), zombie = buildZombieVariant(foot)
-          walks(foot, (step) => buildCavalryFootSprite(color, 'ready', step), zombie)
-          return { frames: species === 'luifeng' ? buildLuiFengFrames(color) : buildCavalryFrames(color), foot: { ready: foot, poke, bash: poke, guard: foot,
-            shocked: buildShockedSprite(foot, 24, 14), zombie, shockedZombie: buildShockedSprite(zombie, 24, 14) } }
-        })() : undefined,
-        lui: species === 'luifeng' ? buildLuiFengPoses(color) : undefined,
-        rex: species === 'rex' ? rexParts(color) : undefined,
-        rexAlpha: species === 'rex' ? buildRexVariant(color, 1) : undefined,
-        rexBlack: species === 'rex' ? buildRexVariant(color, 2) : undefined,
-        phoenix: species === 'phoenix' ? {
-          forms: PHOENIX_FORMS.map((_, form) => {
-            const ready = buildPhoenixSprite(color, 'adult', undefined, form as PhoenixForm), zombie = buildZombieVariant(ready)
-            walks(ready, (step) => buildPhoenixSprite(color, 'adult', undefined, form as PhoenixForm, step), zombie)
+      // Built on first use: every species x team up front is ~2000 canvases (~180 MB), past iOS Safari's canvas memory cap.
+      // ponytail: spawning every species on every team still reaches that total; free unused sides if that ever matters.
+      const poses = (): Poses => {
+        const color = team === 'ffa' ? undefined : TEAM_COLORS[team]
+        const ready = UNITS[species].buildSprite(color)
+        const empty = species === 'thor' ? buildThorSprite(color, 'empty') : ready
+        const headX = species === 'mei-fox' ? 37 : species === 'cavalry' || species === 'luifeng' ? 22 : species === 'ant' || species.startsWith('ant-') ? 35 : species === 'mantis' ? 30 : species === 'spartan' ? 29 : species === 'vampire' ? 28 : species === 'ninja' || species === 'zombie' ? 24 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' ? 25 : species === 'siren' ? 26 : species === 'rex' ? 32 : 34
+        const headY = species === 'mei-fox' ? 23 : species === 'luifeng' ? 10 : species === 'cavalry' ? 6 : species === 'ant' || species.startsWith('ant-') ? 26 : species === 'zombie' || species === 'spartan' || species === 'mantis' ? 14 : species === 'thor' || species === 'swordsaint' || species === 'kunlun' || species === 'meiyuanzhi' || species === 'yanjin' || species === 'mengchuan' || species === 'siren' ? 13 : species === 'rex' || species === 'dragon' ? 11 : species === 'phoenix' || species === 'ninja' || species === 'vampire' ? 15 : 12
+        const shocked = buildShockedSprite(ready, headX, headY)
+        const undead = species === 'zombie' ? ready : buildZombieVariant(empty)
+        const undeadChick = species === 'phoenix' ? buildZombieVariant(buildPhoenixSprite(color, 'chick')) : undefined
+        const walker = WALKERS[species]
+        // A zombie is its own undead pose, and Thor's undead pose is the hammerless one.
+        if (walker) walks(ready, (step) => walker(color, step), species === 'zombie' || species === 'thor' ? undefined : undead)
+        if (species === 'thor') walks(empty, (step) => buildThorSprite(color, 'empty', step), undead)
+        const flyingFrames = species === 'goose' || species === 'dragon' || species === 'phoenix' || species === 'vampire' || species === 'ant-fly'
+          ? Array.from({ length: 8 }, (_, frame) => {
+              const flap = Math.sin(frame * Math.PI / 4)
+              return species === 'ant-fly' ? buildAntFlySprite(color, flap) : species === 'vampire' ? buildVampireSprite(color, flap) : species === 'goose' ? buildGooseSprite(color, true, flap)
+                : species === 'dragon' ? buildDragonSprite(color, flap) : buildPhoenixSprite(color, 'adult', flap)
+            })
+          : undefined
+        return {
+          colony: species === 'anthill' ? Array.from({ length: 5 }, (_, i) => buildAnthillSprite(color, i + 1)) : undefined,
+          dragon: species === 'dragon' ? DRAGON_FORMS.map((_, form) => {
+            const ready = buildDragonSprite(color, undefined, form as DragonForm), zombie = buildZombieVariant(ready)
+            walks(ready, (step) => buildDragonSprite(color, undefined, form as DragonForm, false, step), zombie)
             const frames = Array.from({ length: 8 }, (_, frame) =>
-              buildPhoenixSprite(color, 'adult', Math.sin(frame * Math.PI / 4), form as PhoenixForm))
-            return { ready, shocked: buildShockedSprite(ready, 34, 15), zombie,
-              flyingFrames: frames, shockedFlyingFrames: frames.map((frame) => buildShockedSprite(frame, 34, 15)) }
-          }),
-          egg: buildPhoenixSprite(color, 'egg'),
-          chick: (() => {
-            const chick = buildPhoenixSprite(color, 'chick')
-            walks(chick, (step) => buildPhoenixSprite(color, 'chick', undefined, 0, step), undeadChick)
-            return chick
-          })(),
-          shockedChick: buildShockedSprite(buildPhoenixSprite(color, 'chick'), 24, 26),
-        } : undefined,
-        ready,
-        empty,
-        throwing: species === 'thor' ? buildThorSprite(color, 'throw') : ready,
-        catching: species === 'thor' ? buildThorSprite(color, 'catch') : ready,
-        meditating: species === 'thor' ? buildThorSprite(color, 'heal') : undefined,
-        shocked,
-        shockedEmpty: species === 'thor' ? buildShockedSprite(empty, headX, headY) : shocked,
-        casting: species === 'thor' ? buildThorSprite(color, 'cast') : ready,
-        charging: species === 'thor' ? buildThorSprite(color, 'charge') : ready,
-        flying: species === 'thor' ? buildThorSprite(color, 'fly') : flyingFrames?.[0] ?? ready,
-        flyingFrames,
-        shockedFlyingFrames: flyingFrames?.map((frame) => buildShockedSprite(frame, headX, species === 'vampire' ? 24 : headY)),
-        slamming: species === 'thor' ? buildThorSprite(color, 'slam') : ready,
+              buildDragonSprite(color, Math.sin(frame * Math.PI / 4), form as DragonForm))
+            const breathing = buildDragonSprite(color, undefined, form as DragonForm, true)
+            const breathingFrames = Array.from({ length: 8 }, (_, frame) =>
+              buildDragonSprite(color, Math.sin(frame * Math.PI / 4), form as DragonForm, true))
+            return { ready, sleeping: buildSleepingDragonSprite(color, form as DragonForm), flyingFrames: frames, breathing, breathingFrames, shocked: buildShockedSprite(ready, 34, 11),
+              shockedFlyingFrames: frames.map((frame) => buildShockedSprite(frame, 34, 11)), zombie }
+          }) : undefined,
+          zombie: {
+            ready: undead,
+            shocked: buildShockedSprite(undead, headX, headY),
+            chick: undeadChick,
+            shockedChick: undeadChick ? buildShockedSprite(undeadChick, 24, 26) : undefined,
+          },
+          ninja: species === 'ninja' ? { poke: buildNinjaSprite(color, 'poke'), slash: buildNinjaSprite(color, 'slash') } : undefined,
+          meng: species === 'mengchuan' ? { slash: buildMengChuanSprite(color, 'slash'), parry: buildMengChuanSprite(color, 'parry'), meditate: buildMengChuanSprite(color, 'meditate'), raise: buildMengChuanSprite(color, 'raise'),
+            thunder: (() => {
+              const ready = buildMengChuanSprite(color, 'ready', undefined, 'thunder')
+              walks(ready, (step) => buildMengChuanSprite(color, 'ready', step, 'thunder'))
+              return { ready, slash: buildMengChuanSprite(color, 'slash', undefined, 'thunder'), parry: buildMengChuanSprite(color, 'parry', undefined, 'thunder'),
+                meditate: buildMengChuanSprite(color, 'meditate', undefined, 'thunder'), raise: buildMengChuanSprite(color, 'raise', undefined, 'thunder') }
+            })(),
+            body: (() => {
+              const ready = buildMengChuanSprite(color, 'ready', undefined, 'body')
+              walks(ready, (step) => buildMengChuanSprite(color, 'ready', step, 'body'))
+              return { ready, punch: buildMengChuanSprite(color, 'punch', undefined, 'body'), parry: buildMengChuanSprite(color, 'parry', undefined, 'body'),
+                meditate: buildMengChuanSprite(color, 'meditate', undefined, 'body'), raise: buildMengChuanSprite(color, 'raise', undefined, 'body'),
+                hook: buildMengChuanSprite(color, 'hook', undefined, 'body'), slam: buildMengChuanSprite(color, 'slam', undefined, 'body') }
+            })() } : undefined,
+          saint: species === 'swordsaint' ? { ...buildSaintPoses(color, false),
+            bamboo: { ready: buildSwordSaintSprite(color, 'ride', undefined, true), ...buildSaintPoses(color, true) } } : undefined,
+          yan: species === 'yanjin' ? { slice: buildYanJinSprite(color, 'slice'), raise: buildYanJinSprite(color, 'raise'),
+            slam: buildYanJinSprite(color, 'slam'), meditate: buildYanJinSprite(color, 'meditate'), lift: buildYanJinSprite(color, 'lift'),
+            pierce: buildYanJinSprite(color, 'pierce'),
+            charge: buildYanJinSprite(color, 'charge'), cleave: buildYanJinSprite(color, 'cleave'), seppuku: buildYanJinSprite(color, 'seppuku'),
+            idle: (() => {
+              const idle = buildYanJinSprite(color, 'idle')
+              walks(idle, (step) => buildYanJinSprite(color, 'idle', step))
+              return idle
+            })(),
+            demon: (() => {
+              const ready = buildYanDemonSprite(color, 'ready')
+              walks(ready, (step) => buildYanDemonSprite(color, 'ready', step))
+              return { ready, slash: buildYanDemonSprite(color, 'slash'), raise: buildYanDemonSprite(color, 'raise'),
+                plant: buildYanDemonSprite(color, 'plant'), lift: buildYanDemonSprite(color, 'lift'), roar: buildYanDemonSprite(color, 'roar') }
+            })() } : undefined,
+          mei: species === 'meiyuanzhi' ? { meditate: buildMeiSprite(color, 'meditate'),
+            throwFront: buildMeiSprite(color, 'throwFront'), throwBack: buildMeiSprite(color, 'throwBack'),
+            fox: (() => {
+              const ready = buildMeiSprite(color, 'ready', undefined, true)
+              walks(ready, (step) => buildMeiSprite(color, 'ready', step, true))
+              return { ready, meditate: buildMeiSprite(color, 'meditate', undefined, true),
+                throwFront: buildMeiSprite(color, 'throwFront', undefined, true),
+                throwBack: buildMeiSprite(color, 'throwBack', undefined, true), shocked: buildShockedSprite(ready, 25, 13) }
+            })() } : undefined,
+          kunlun: species === 'kunlun' ? { raise: buildKunlunSprite(color, 'raise'), point: buildKunlunSprite(color, 'point'),
+            slash: buildKunlunSprite(color, 'slash'), ghost: buildKunlunGhost(ready) } : undefined,
+          mantis: species === 'mantis' ? Array.from({ length: 4 }, (_, index) => {
+            const form = index as MantisForm, ready = buildMantisSprite(color, 'ready', form), zombie = buildZombieVariant(ready)
+            const carry = buildMantisSprite(color, 'carry', form), guard = buildMantisSprite(color, 'guard', form)
+            walks(ready, (step) => buildMantisSprite(color, 'ready', form, step), zombie)
+            walks(carry, (step) => buildMantisSprite(color, 'carry', form, step))
+            walks(guard, (step) => buildMantisSprite(color, 'guard', form, step))
+            return { ready, strike: buildMantisSprite(color, 'strike', form), carry,
+              hop: buildMantisSprite(color, 'hop', form), guard,
+              shocked: buildShockedSprite(ready, 30, 14), zombie, shockedZombie: buildShockedSprite(zombie, 30, 14),
+              shed: buildMantisShedSprite(form) }
+          }) : undefined,
+          spartan: species === 'spartan' ? (() => {
+            // Ready and guard (formation march) poses walk, for every weapon and the commander.
+            const walking = (pose: 'ready' | 'guard', weapon: 'spear' | 'knife', commander: boolean) => {
+              const sprite = buildSpartanSprite(color, pose, weapon, commander)
+              walks(sprite, (step) => buildSpartanSprite(color, pose, weapon, commander, step))
+              return sprite
+            }
+            const knife = buildSpartanSprite(color, 'ready', 'knife'), zombie = buildZombieVariant(knife)
+            walks(knife, (step) => buildSpartanSprite(color, 'ready', 'knife', false, step), zombie)
+            const commander = walking('ready', 'spear', true)
+            return { poke: buildSpartanSprite(color, 'poke'), bash: buildSpartanSprite(color, 'bash'),
+              guard: walking('guard', 'spear', false), throwing: buildSpartanSprite(color, 'throw'),
+              commander: { ready: commander, poke: buildSpartanSprite(color, 'poke', 'spear', true),
+                bash: buildSpartanSprite(color, 'bash', 'spear', true), guard: walking('guard', 'spear', true),
+                throwing: buildSpartanSprite(color, 'throw', 'spear', true), shocked: buildShockedSprite(commander, 29, 14) },
+              knife: { ready: knife, poke: buildSpartanSprite(color, 'poke', 'knife'),
+                bash: buildSpartanSprite(color, 'bash', 'knife'), guard: walking('guard', 'knife', false),
+                shocked: buildShockedSprite(knife, 29, 14), zombie, shockedZombie: buildShockedSprite(zombie, 29, 14) } }
+          })() : undefined,
+          cavalry: species === 'cavalry' || species === 'luifeng' ? (() => {
+            const foot = buildCavalryFootSprite(color), poke = buildCavalryFootSprite(color, 'poke'), zombie = buildZombieVariant(foot)
+            walks(foot, (step) => buildCavalryFootSprite(color, 'ready', step), zombie)
+            return { frames: species === 'luifeng' ? buildLuiFengFrames(color) : buildCavalryFrames(color), foot: { ready: foot, poke, bash: poke, guard: foot,
+              shocked: buildShockedSprite(foot, 24, 14), zombie, shockedZombie: buildShockedSprite(zombie, 24, 14) } }
+          })() : undefined,
+          lui: species === 'luifeng' ? buildLuiFengPoses(color) : undefined,
+        luiFoot: species === 'luifeng' ? buildLuiFootPoses(color) : undefined,
+          rex: species === 'rex' ? rexParts(color) : undefined,
+          rexAlpha: species === 'rex' ? buildRexVariant(color, 1) : undefined,
+          rexBlack: species === 'rex' ? buildRexVariant(color, 2) : undefined,
+          phoenix: species === 'phoenix' ? {
+            forms: PHOENIX_FORMS.map((_, form) => {
+              const ready = buildPhoenixSprite(color, 'adult', undefined, form as PhoenixForm), zombie = buildZombieVariant(ready)
+              walks(ready, (step) => buildPhoenixSprite(color, 'adult', undefined, form as PhoenixForm, step), zombie)
+              const frames = Array.from({ length: 8 }, (_, frame) =>
+                buildPhoenixSprite(color, 'adult', Math.sin(frame * Math.PI / 4), form as PhoenixForm))
+              return { ready, shocked: buildShockedSprite(ready, 34, 15), zombie,
+                flyingFrames: frames, shockedFlyingFrames: frames.map((frame) => buildShockedSprite(frame, 34, 15)) }
+            }),
+            egg: buildPhoenixSprite(color, 'egg'),
+            chick: (() => {
+              const chick = buildPhoenixSprite(color, 'chick')
+              walks(chick, (step) => buildPhoenixSprite(color, 'chick', undefined, 0, step), undeadChick)
+              return chick
+            })(),
+            shockedChick: buildShockedSprite(buildPhoenixSprite(color, 'chick'), 24, 26),
+          } : undefined,
+          ready,
+          empty,
+          throwing: species === 'thor' ? buildThorSprite(color, 'throw') : ready,
+          catching: species === 'thor' ? buildThorSprite(color, 'catch') : ready,
+          meditating: species === 'thor' ? buildThorSprite(color, 'heal') : undefined,
+          shocked,
+          shockedEmpty: species === 'thor' ? buildShockedSprite(empty, headX, headY) : shocked,
+          casting: species === 'thor' ? buildThorSprite(color, 'cast') : ready,
+          charging: species === 'thor' ? buildThorSprite(color, 'charge') : ready,
+          flying: species === 'thor' ? buildThorSprite(color, 'fly') : flyingFrames?.[0] ?? ready,
+          flyingFrames,
+          shockedFlyingFrames: flyingFrames?.map((frame) => buildShockedSprite(frame, headX, species === 'vampire' ? 24 : headY)),
+          slamming: species === 'thor' ? buildThorSprite(color, 'slam') : ready,
+        }
       }
+      let built: Poses | undefined
+      Object.defineProperty(sides, team, { enumerable: true, get: () => built ??= poses() })
     }
     sprites[species] = sides
   }

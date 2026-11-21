@@ -8,7 +8,9 @@ import { drawCharmHeart, drawSirenSong, SIREN, SIREN_SONG } from './siren.ts'
 import { drawKatanaImpact, drawKatanaSlash, drawShuriken, KATANA_SLASH_DURATION, NINJA, NINJA_AMBUSH, NINJA_DASH, SHURIKEN_SPEED } from './ninja.ts'
 import { drawSpartanSpear, SPARTAN, SPARTAN_BASH, SPARTAN_FORMATION, SPARTAN_THROW, SPARTAN_KNIFE, SPARTAN_CHARGE, SPARTAN_COMMANDER } from './spartan.ts'
 import { CAVALRY_FOOT, CAVALRY_GALLOP_FRAMES, CAVALRY_RIDE } from './cavalry.ts'
-import { drawLuiAura, drawLuiHeld, drawLuiSpin, drawLuiSweep, drawLuiSweepSpear, LUI_CHARGE, LUI_SWEEP, LUI_COUCH_TIP, LUI_ENHANCE, LUI_FENG, luiHeldTip, luiSpearAngle } from './luifeng.ts'
+import { drawLuiArrow, drawLuiAura, drawLuiBow, drawLuiCarnageSlash, drawLuiGround, drawLuiHeld, drawLuiRain, drawLuiSpin, drawLuiSweep, drawLuiSweepSpear,
+  LUI_ARROW, LUI_BOW, LUI_BOW_ANCHOR, LUI_CARNAGE, LUI_INK_ARROW, LUI_CHARGE, LUI_SWEEP, LUI_COUCH_TIP, LUI_ENHANCE, LUI_FENG, LUI_REST, LUI_REST_TIP,
+  FIT, LUI_FOOT_BOW_ANCHOR, LUI_FOOT_BOW_RIG, luiBowTip, luiHeldTip, luiSpearAngle, type LuiGroundFx, type LuiRainFx } from './luifeng.ts'
 import { drawInkCharge, drawInkSlash, INK_SLASH_LIFE } from './inkcharge.ts'
 import { activeSpartanSlot, leaveSpartanFormation, updateSpartanFormations, drawSpartanFormation, drawSpartanCharge, type SpartanFormation, type SpartanArmy } from './spartan-formations.ts'
 import { MANTIS, MANTIS_DUEL, MANTIS_DODGE, MANTIS_GUARD, MANTIS_EVOLUTION, MANTIS_MOON_SLASH,
@@ -29,6 +31,9 @@ import { drawYanBlackHole, drawYanBurst, drawYanCleave, drawYanColossus, drawYan
   YAN_JIN_TEMPEST, YAN_DEMON_GATHER, drawYanCrescent, drawYanBlood, drawYanDemonAura, drawYanDemonBlade, drawYanRoar, drawYanRuinCracks,
   drawYanRuinEruption, drawYanTrail, drawYanInk } from './yanjin.ts'
 import { drawKunlunBlade, drawKunlunCrescent, drawKunlunShield, drawKunlunSpark, drawKunlunSwing, drawKunlunWall, drawLightning, drawLightningFlash, KUNLUN, KUNLUN_SKILLS, type KunlunPose } from './kunlun.ts'
+import { drawLuiFootBow, drawLuiHorseCorpse, drawLuiInkCover, drawLuiInkSlash, drawLuiPiercer, drawLuiStars, drawLuiThrownSpear,
+  LUI_BARRAGE, LUI_CUTTER, LUI_FOOT, LUI_FOOT_ATTACKS, LUI_FOOT_COOLDOWNS, LUI_FOOT_SKILL_WEAPON, LUI_FOOT_SKILLS, LUI_FOOT_SPACING, LUI_SKILL_ROLL, LUI_WEAPON_BANDS, LUI_HORSE, LUI_INK_SLASH_LIFE, LUI_MOON, LUI_PIERCE, LUI_REMOUNT, LUI_STARS, LUI_STRIKE,
+  type LuiFootSkillKind, type LuiWeapon } from './luifeng-foot.ts'
 import { drawMengBind, drawMengBreeze, drawMengConfused, drawMengDissolve, drawMengParry, drawMengSlashes, drawMengTitle, ease, MENG_BREEZE, MENG_CLONE,
   MENG_PARRY, MENG_REST, MENG_DEVILS, drawMengDevils, drawMengDevil, drawMengRitual, MENG_RITUAL, MENG_RITUAL_TIME,
   MENG_THUNDER, MENG_THUNDER_FORM, drawMengThunderMoon, MENG_STEP, drawMengStep, drawMengStrike, drawMengSwing,
@@ -99,6 +104,22 @@ export interface Fighter {
   luiAura: number // Enhance aura seconds left: faster, stronger, tougher
   luiCharge: LuiCharge | null
   luiChargeCooldown: number
+  luiCarnage: LuiCarnage | null
+  luiCarnageCooldown: number
+  luiBowMode: boolean
+  luiBowCast: LuiBowCast | null
+  luiRainCooldown: number
+  luiGroundCooldown: number
+  luiFoot: boolean // unhorsed: fighting on foot with sword, spear and bow until the horse returns
+  luiHorseTimer: number // seconds since his horse fell
+  luiIdle: number // seconds in a row on foot with no enemy in sight
+  luiRemount: number | null // seconds into the horse's return
+  luiWeapon: LuiWeapon
+  luiFootSkill: LuiFootSkill | null
+  luiFootCooldowns: Record<LuiFootSkillKind, number>
+  luiFootShot: number | null // seconds into an ordinary foot bow draw
+  slow: number // seconds left slowed
+  slowAmount: number // the share of speed lost while slowed
   mantisDuel: MantisDuel | null
   mantisCooldown: number
   mantisGrace: number
@@ -332,6 +353,12 @@ interface LightningWave {
 // Seven Sha Fists: rushing in, throwing the seven punches (`thrown` so far), then the burst; `time` in this phase.
 // Lui Feng's Piercing Charge: gathering, galloping at the target, then carrying it on the spear and flinging it.
 interface LuiCharge { phase: 'windup' | 'dash' | 'lift' | 'swing'; time: number; target: Fighter }
+interface LuiCarnage { time: number; x: number; y: number; radius: number; direction: number; pulses: number; ghostAt: number }
+interface LuiBowCast { kind: 'shot' | 'rain' | 'ground'; time: number; angle: number; released: boolean; target: Fighter | null; x: number; y: number; area?: LuiArrowRain }
+interface LuiArrowRain extends LuiRainFx { owner: Fighter; power: number; waves: number }
+interface LuiGroundShot extends LuiGroundFx { owner: Fighter; power: number; impacted: boolean }
+// One of Lui Feng's foot skills in progress. `stage` steps through its phases; (x, y) and `angle` are wherever it aims.
+interface LuiFootSkill { kind: LuiFootSkillKind; time: number; stage: number; target: Fighter | null; x: number; y: number; angle: number; fromX: number; fromY: number; fired: number; hits: Set<Fighter> }
 interface MengFists { target: Fighter; phase: 'rush' | 'fists' | 'burst'; time: number; thrown: number; x: number; y: number }
 interface SaintMelee {
   phase: 'flip' | 'melee' | 'mount'; time: number; target: Fighter; combo: number
@@ -349,13 +376,15 @@ function canMeditate(fighter: Fighter) {
     && !fighter.lure && !fighter.heldBy && !fighter.thrown && !fighter.falling && !fighter.inside
     && !fighter.hammerOut && !fighter.charge && !fighter.lightning && !fighter.saint && !fighter.mei
     && fighter.burn <= 0 && fighter.bleed <= 0
+    && (fighter.species !== 'luifeng' || grounded(fighter) && !fighter.luiFoot && fighter.luiRemount === null && !fighter.luiCharge && !fighter.luiCarnage
+      && !fighter.luiBowCast && fighter.luiEnhance === null)
 }
 interface GiantSword { owner: Fighter; target: Fighter; x: number; y: number; fromX: number; fromY: number; time: number; flying: boolean }
 interface FishThrow { owner: Fighter; target: Fighter; fromX: number; fromY: number; time: number }
 // Swords: `comeback` ones return to the saint after striking, `ride` is the sword he rides during his blink.
 // `caught`: frozen in that Yan Jin's Yang Ward until he spins and sends it back.
 // `ward`: a Sword Ward striker, which keeps darting at his target while the ward lasts.
-interface Shuriken { kind: 'shuriken' | 'spear' | 'sword' | 'talisman'; ward?: boolean; caught?: Fighter; power?: number; fox?: boolean; hold?: number; target?: Fighter; seed?: number; comeback?: boolean; returning?: boolean; ride?: boolean; owner: Fighter; x: number; y: number; vx: number; vy: number; elevation: number; vz: number; life: number }
+interface Shuriken { kind: 'shuriken' | 'spear' | 'sword' | 'talisman' | 'arrow'; damage?: number; knockback?: number; ward?: boolean; caught?: Fighter; power?: number; fox?: boolean; hold?: number; target?: Fighter; seed?: number; comeback?: boolean; returning?: boolean; ride?: boolean; owner: Fighter; x: number; y: number; vx: number; vy: number; elevation: number; vz: number; life: number }
 interface Hammer {
   owner: Fighter
   x: number
@@ -437,7 +466,7 @@ function saintPower(fighter: Fighter) {
 
 function shurikenSpeed(star: Shuriken) {
   return star.kind === 'spear' ? SPARTAN_THROW.speed : star.kind === 'sword' ? SWORD_SAINT_SWORDS.speed * saintPower(star.owner)
-    : star.kind === 'talisman' ? MEI_TALISMAN.speed : SHURIKEN_SPEED
+    : star.kind === 'talisman' ? MEI_TALISMAN.speed : star.kind === 'arrow' ? LUI_BOW.shot.speed : SHURIKEN_SPEED
 }
 
 function grounded(fighter: Fighter) {
@@ -554,6 +583,7 @@ function fighterDef(fighter: Fighter) {
       speed: SWORD_SAINT.speed * SWORD_SAINT_BAMBOO.power, cooldown: SWORD_SAINT.cooldown / SWORD_SAINT_BAMBOO.power }
     : fighter.species === 'kunlun' && (fighter.kunlunHaste > 0 || fighter.kunlunOwner) ? { ...UNITS.kunlun,
       hp: fighter.kunlunOwner ? KUNLUN_SKILLS.clone.hp : KUNLUN.hp, speed: KUNLUN.speed * (fighter.kunlunHaste > 0 ? KUNLUN_SKILLS.spin.speed : 1) }
+    : fighter.species === 'luifeng' && fighter.luiFoot ? { ...UNITS.luifeng, ...LUI_FOOT }
     : fighter.species === 'luifeng' && fighter.luiAura > 0 ? { ...UNITS.luifeng, speed: LUI_FENG.speed * LUI_ENHANCE.speed,
       damage: LUI_FENG.damage * LUI_ENHANCE.power, knockback: LUI_FENG.knockback * LUI_ENHANCE.power }
     : fighter.colony ? { ...UNITS.anthill, hp: ANTHILL.hp + Math.max(0, fighter.colony.level - 1) * 250,
@@ -593,6 +623,13 @@ export class Battle {
   yanTrails: { x1: number; y1: number; x2: number; y2: number; life: number }[] = []
   mengBreezes: MengBreeze[] = []
   luiSweeps: { owner: Fighter; time: number; facing: number }[] = [] // Lui Feng's painted normal-attack sweeps
+  luiGhosts: { x: number; y: number; facing: number; size: number; radius: number; team: Team; frame: number; turn: number; life: number }[] = []
+  luiCarnageSlashes: { x: number; y: number; facing: number; radius: number; time: number; finish: boolean }[] = []
+  luiArrowRains: LuiArrowRain[] = []
+  luiGroundShots: LuiGroundShot[] = []
+  luiHorseCorpses: { x: number; y: number; facing: number; team: Team; time: number }[] = [] // his fallen horse, dissolving
+  luiPiercers: { owner: Fighter; kind: 'arrow' | 'moon'; x: number; y: number; vx: number; vy: number; power: number; hits: Set<Fighter> }[] = []
+  luiInkSlashes: { x: number; y: number; angle: number; radius: number; facing: number; time: number; length: number }[] = [] // length > 0: a straight thrust
   mengRings: { owner: Fighter; x: number; y: number; time: number; seed: number; victims: Fighter[] }[] = [] // 悲苍一画秋风
   mengParries: { x: number; y: number; angle: number; life: number; seed: number }[] = []
   private mengParried: Fighter | null = null // set by a parry, so a projectile hit can tell it was batted away
@@ -915,6 +952,10 @@ export class Battle {
       spartanCommander: species === 'spartan' && commander ? { troops: [] } : null,
       cavalryMounted: species === 'cavalry' || species === 'luifeng',
       luiEnhance: null, luiAura: 0, luiCharge: null, luiChargeCooldown: 0,
+      luiCarnage: null, luiCarnageCooldown: 0,
+      luiBowMode: false, luiBowCast: null, luiRainCooldown: 0, luiGroundCooldown: 0,
+      luiFoot: false, luiHorseTimer: 0, luiIdle: 0, luiRemount: null, luiWeapon: 'spear', luiFootSkill: null, luiFootShot: null,
+      luiFootCooldowns: { pierce: 0, barrage: 0, strike: 0, moon: 0, cutter: 0, stars: 0 }, slow: 0, slowAmount: 0,
       mantisDuel: null, mantisCooldown: 0, mantisGrace: 0, mantisMeals: 0, mantisEaten: false,
       mantisDodge: null, mantisDodgeCooldown: 0,
       mantisKills: 0, mantisForm: 0, mantisLeap: null, mantisCloak: 0, mantisPrey: null,
@@ -1026,6 +1067,11 @@ export class Battle {
       fighter.cavalryMounted = fighter.species === 'cavalry' || fighter.species === 'luifeng'
       fighter.luiEnhance = null
       fighter.luiAura = fighter.luiChargeCooldown = 0
+      fighter.luiCarnage = null
+      fighter.luiCarnageCooldown = 0
+      fighter.luiBowMode = false
+      fighter.luiBowCast = null
+      fighter.luiRainCooldown = fighter.luiGroundCooldown = 0
       fighter.spartanMark = null
       fighter.spartanThrowCooldown = SPARTAN_THROW.opening
       fighter.dragonDomainUsed = false
@@ -1090,6 +1136,13 @@ export class Battle {
     this.yanTrails = []
     this.mengBreezes = []
     this.luiSweeps = []
+    this.luiGhosts = []
+    this.luiCarnageSlashes = []
+    this.luiArrowRains = []
+    this.luiGroundShots = []
+    this.luiHorseCorpses = []
+    this.luiPiercers = []
+    this.luiInkSlashes = []
     this.mengRings = []
     this.mengParries = []
     this.mengClones = []
@@ -1653,6 +1706,8 @@ export class Battle {
   private claimMeal(owner: Fighter | null | undefined, victim: Fighter) {
     if (victim.hp <= 0 && spartanCommanderProtected(victim)) { victim.hp = 1; return }
     if (victim.hp <= 0) {
+      victim.luiCarnage = null
+      this.cancelLuiBow(victim)
       leaveSpartanFormation(victim)
       this.removeMantisFromDuel(victim)
       this.cancelMantisLeap(victim)
@@ -1919,6 +1974,7 @@ export class Battle {
       speedY *= 0.5
     }
     if (fighter.dizzy > 0) { speedX *= 0.35; speedY *= 0.35 }
+    if (fighter.slow > 0) { speedX *= 1 - fighter.slowAmount; speedY *= 1 - fighter.slowAmount }
     fighter.vx += (speedX - fighter.vx) * 0.13
     fighter.vy += (speedY - fighter.vy) * 0.13
     fighter.x += fighter.vx * DT
@@ -2525,6 +2581,9 @@ export class Battle {
     fighter.kunlunHaste = fighter.kunlunShield = 0
     fighter.luiEnhance = null
     fighter.luiAura = 0
+    fighter.luiCarnage = null
+    this.cancelLuiBow(fighter)
+    fighter.luiBowMode = false
     this.leaveTower(fighter, true)
     this.leaveNinjaTree(fighter)
     this.releaseGrab(fighter)
@@ -2551,6 +2610,10 @@ export class Battle {
     this.fishThrows = this.fishThrows.filter((fish) => fish.owner !== fighter)
     this.shots = this.shots.filter((shot) => shot.owner !== fighter)
     this.storms = this.storms.filter((storm) => storm.owner !== fighter)
+    this.luiArrowRains = this.luiArrowRains.filter((area) => area.owner !== fighter)
+    this.luiPiercers = this.luiPiercers.filter((piercer) => piercer.owner !== fighter)
+    fighter.luiRemount = fighter.luiFootSkill = fighter.luiFootShot = null
+    this.luiGroundShots = this.luiGroundShots.filter((shot) => shot.impacted || shot.owner !== fighter)
     this.flames = this.flames.filter((flame) => flame.owner !== fighter)
     this.phoenixFires = this.phoenixFires.filter((fire) => fire.owner !== fighter)
     this.phoenixFireballs = this.phoenixFireballs.filter((ball) => ball.owner !== fighter)
@@ -3536,7 +3599,7 @@ export class Battle {
 
   // Enhance: with an enemy close and the skill ready, Lui Feng reins in to whirl his halberd overhead.
   private tryLuiEnhance(fighter: Fighter, target: Fighter | null) {
-    if (fighter.species !== 'luifeng' || fighter.zombie || !target || fighter.skillCooldown > 0 || fighter.stun > 0 || fighter.fear > 0
+    if (fighter.species !== 'luifeng' || fighter.luiFoot || fighter.luiRemount !== null || fighter.zombie || fighter.luiCarnage || fighter.luiBowCast || !target || fighter.skillCooldown > 0 || fighter.stun > 0 || fighter.fear > 0
       || fighter.frozen > 0 || fighter.lure || fighter.heldBy || fighter.thrown || fighter.tower || !grounded(fighter)) return false
     if (Math.hypot(target.x - fighter.x, target.y - fighter.y) > LUI_ENHANCE.trigger) return false
     fighter.luiEnhance = 0
@@ -3561,7 +3624,7 @@ export class Battle {
   // The slam knocks every enemy around him away, then the aura takes hold.
   private luiSlam(owner: Fighter) {
     const E = LUI_ENHANCE, def = fighterDef(owner)
-    this.impacts.push({ x: owner.x, y: owner.y, radius: E.radius, life: 0.45, color: '#ffd66b' })
+    this.impacts.push({ x: owner.x, y: owner.y, radius: E.radius, life: 0.45, color: '#221f33' })
     this.impacts.push({ x: owner.x + owner.facing * 12 * def.size, y: owner.y, radius: 40, life: 0.4, smoke: true })
     this.craters.push({ x: owner.x + owner.facing * 12 * def.size, y: owner.y, life: 2 })
     for (const victim of this.nearbyFighters(owner.x, owner.y, E.radius + 48)) {
@@ -3576,7 +3639,7 @@ export class Battle {
 
   // Piercing Charge: a target at gallop distance and the skill ready, he leans back and starts gathering.
   private tryLuiCharge(fighter: Fighter, target: Fighter | null) {
-    if (fighter.species !== 'luifeng' || fighter.zombie || fighter.luiChargeCooldown > 0 || fighter.luiEnhance !== null
+    if (fighter.species !== 'luifeng' || fighter.luiFoot || fighter.luiRemount !== null || fighter.zombie || fighter.luiCarnage || fighter.luiBowCast || fighter.luiBowMode || fighter.luiChargeCooldown > 0 || fighter.luiEnhance !== null
       || !target || !targetable(fighter, target) || !grounded(target) || building(target) || fighter.stun > 0 || fighter.fear > 0
       || fighter.frozen > 0 || fighter.lure || fighter.heldBy || fighter.thrown || fighter.tower || !grounded(fighter)) return false
     const dx = target.x - fighter.x, distance = Math.hypot(dx, target.y - fighter.y)
@@ -3672,6 +3735,255 @@ export class Battle {
     target.vx = target.vy = 0
     charge.phase = 'lift'
     charge.time = 0
+  }
+
+  private canLuiBowAct(fighter: Fighter) {
+    return fighter.hp > 0 && !fighter.zombie && grounded(fighter) && fighter.stun <= 0 && fighter.frozen <= 0
+      && fighter.fear <= 0 && !fighter.lure && !fighter.mantisDuel && !fighter.luiCharge && !fighter.luiCarnage
+      && fighter.luiEnhance === null && !fighter.luiFoot && fighter.luiRemount === null
+  }
+
+  private cancelLuiBow(fighter: Fighter) {
+    const area = fighter.luiBowCast?.area
+    if (area && !area.released) this.luiArrowRains = this.luiArrowRains.filter((rain) => rain !== area)
+    fighter.luiBowCast = null
+  }
+
+  private luiBowAim(fighter: Fighter, x: number, y: number) {
+    const def = fighterDef(fighter)
+    return Math.atan2(y - (fighter.y + def.radius + LUI_BOW_ANCHOR[1] * def.size - fighter.elevation),
+      (x - fighter.x) * fighter.facing - LUI_BOW_ANCHOR[0] * def.size)
+  }
+
+  private luiBowOrigin(fighter: Fighter, angle: number, length?: number) {
+    const def = fighterDef(fighter), [x, y] = luiBowTip(angle, length)
+    return { x: fighter.x + x * def.size * fighter.facing, y: fighter.y + def.radius + y * def.size - fighter.elevation }
+  }
+
+  private moveLuiArchery(fighter: Fighter, target: Fighter) {
+    const dx = target.x - fighter.x, dy = target.y - fighter.y, d = Math.hypot(dx, dy) || 1
+    const nx = dx / d, ny = dy / d, def = fighterDef(fighter)
+    const pull = d > LUI_BOW.range ? 1 : Math.max(-0.8, Math.min(1, (d - LUI_BOW.spacing) / 90))
+    const side = d > LUI_BOW.range ? 0 : (fighter.id % 2 ? 0.45 : -0.45)
+    const mx = nx * pull - ny * side, my = ny * pull + nx * side, length = Math.max(1, Math.hypot(mx, my))
+    this.move(fighter, mx / length * def.speed, my / length * def.speed)
+    if (Math.abs(dx) > 2) fighter.facing = dx > 0 ? 1 : -1
+  }
+
+  private stepLuiArchery(fighter: Fighter, target: Fighter) {
+    if (fighter.species !== 'luifeng' || !fighter.luiBowMode || !this.canLuiBowAct(fighter)) return false
+    const distance = Math.hypot(target.x - fighter.x, target.y - fighter.y)
+    if (distance <= LUI_BOW.range && fighter.cooldown <= 0 && this.shuriken.length < MAX_FIGHTERS * 2) {
+      fighter.luiBowCast = { kind: 'shot', time: 0, angle: 0, released: false, target, x: target.x, y: target.y }
+      fighter.cooldown = LUI_BOW.shot.every
+      fighter.attack = 0
+      return this.stepLuiBowCast(fighter)
+    }
+    this.moveLuiArchery(fighter, target)
+    return true
+  }
+
+  private tryLuiBowSkill(fighter: Fighter, target: Fighter | null, kind: 'rain' | 'ground') {
+    if (fighter.species !== 'luifeng' || fighter.luiBowCast || !this.canLuiBowAct(fighter)) return false
+    const B = LUI_BOW, def = fighterDef(fighter)
+    let x = fighter.x + fighter.facing * 10 * def.size, y = fighter.y + def.radius
+    if (kind === 'rain') {
+      if (!fighter.luiBowMode || fighter.luiRainCooldown > 0 || !target || !targetable(fighter, target)
+        || !grounded(target) || building(target) || Math.hypot(target.x - fighter.x, target.y - fighter.y) > B.range) return false
+      x = 0; y = 0
+      let count = 0
+      for (const other of this.nearbyFighters(target.x, target.y, 100)) {
+        if (!targetable(fighter, other) || !grounded(other) || building(other)
+          || Math.hypot(other.x - target.x, other.y - target.y) > 100
+          || Math.hypot(other.x - fighter.x, other.y - fighter.y) > B.range) continue
+        x += other.x; y += other.y; count++
+      }
+      x = Math.max(0, Math.min(this.width, count ? x / count : target.x))
+      y = Math.max(0, Math.min(this.height, count ? y / count : target.y))
+    } else {
+      if (fighter.luiGroundCooldown > 0) return false
+      let nearby = false
+      for (const other of this.nearbyFighters(fighter.x, fighter.y, B.ground.radius + this.gridRadius)) {
+        if (targetable(fighter, other) && grounded(other) && !building(other) && canReach(fighter, other)
+          && Math.hypot(other.x - fighter.x, other.y - fighter.y) <= B.ground.radius + fighterDef(other).radius) { nearby = true; break }
+      }
+      if (!nearby) return false
+    }
+    const cast: LuiBowCast = { kind, time: 0, angle: kind === 'rain' ? -1.35 : this.luiBowAim(fighter, x, y), released: false, target, x, y }
+    if (kind === 'rain') {
+      cast.area = { owner: fighter, x, y, time: -B.rain.charge, released: false, seed: fighter.id + this.tick * 0.23,
+        fromX: 0, fromY: 0, angle: 0, power: 1, waves: 0 }
+      this.luiArrowRains.push(cast.area)
+      fighter.luiRainCooldown = B.rain.cooldown
+    } else fighter.luiGroundCooldown = B.ground.cooldown
+    fighter.luiBowCast = cast
+    fighter.attack = 0
+    return this.stepLuiBowCast(fighter)
+  }
+
+  private stepLuiBowCast(fighter: Fighter) {
+    const B = LUI_BOW, cast = fighter.luiBowCast!
+    if (!this.canLuiBowAct(fighter)) { this.cancelLuiBow(fighter); return false }
+    const target = cast.target
+    if (cast.kind === 'shot' && !cast.released) {
+      const distance = target ? Math.hypot(target.x - fighter.x, target.y - fighter.y) : Infinity
+      if (!target || !targetable(fighter, target) || distance > B.range || distance <= B.exit) {
+        if (distance <= B.exit) fighter.luiBowMode = false
+        this.cancelLuiBow(fighter); return false
+      }
+    }
+    if (cast.kind === 'shot' && target && targetable(fighter, target)) {
+      this.moveLuiArchery(fighter, target)
+      if (!cast.released) cast.angle = this.luiBowAim(fighter, target.x, target.y - target.elevation - 12)
+    } else this.move(fighter, 0, 0)
+    if (cast.kind === 'ground' && !cast.released) {
+      const def = fighterDef(fighter)
+      cast.x = Math.max(0, Math.min(this.width, fighter.x + fighter.facing * 10 * def.size))
+      cast.y = Math.max(0, Math.min(this.height, fighter.y + def.radius))
+      cast.angle = this.luiBowAim(fighter, cast.x, cast.y)
+    }
+    cast.time += DT
+    const charge = cast.kind === 'shot' ? B.shot.draw : B[cast.kind].charge
+    if (cast.area && !cast.released) cast.area.time = cast.time - charge
+    if (!cast.released && cast.time + 1e-8 >= charge) {
+      const from = this.luiBowOrigin(fighter, cast.angle, cast.kind === 'ground' ? LUI_INK_ARROW : undefined), power = fighter.luiAura > 0 ? LUI_ENHANCE.power : 1
+      if (cast.kind === 'shot') {
+        if (this.shuriken.length >= MAX_FIGHTERS * 2) { this.cancelLuiBow(fighter); return true }
+        const dx = target!.x - from.x, dy = target!.y - fighter.y, flight = Math.max(0.05, Math.hypot(dx, dy) / B.shot.speed)
+        const elevation = Math.max(0, fighter.y - from.y)
+        this.shuriken.push({ kind: 'arrow', owner: fighter, power, x: from.x, y: fighter.y, elevation,
+          vx: dx / flight, vy: dy / flight, vz: (target!.elevation + 12 - elevation) / flight, life: B.range / B.shot.speed })
+      } else if (cast.kind === 'rain') {
+        const area = cast.area!
+        area.released = true; area.time = 0; area.power = power
+        area.fromX = from.x; area.fromY = from.y
+        area.angle = Math.atan2(Math.sin(cast.angle), Math.cos(cast.angle) * fighter.facing)
+      } else this.luiGroundShots.push({ owner: fighter, x: cast.x, y: cast.y, fromX: from.x, fromY: from.y, time: 0, power, impacted: false })
+      cast.released = true
+    }
+    if (cast.time + 1e-8 >= charge + B.recover) fighter.luiBowCast = null
+    return true
+  }
+
+  private hitLuiBowArea(owner: Fighter, x: number, y: number, radius: number, damage: number, knockback = 0, stun = 0) {
+    for (const victim of this.nearbyFighters(x, y, radius + this.gridRadius + 32)) {
+      if (owner.hp <= 0 || owner.zombie) break
+      if (!targetable(owner, victim) || !grounded(victim) || building(victim)) continue
+      const dx = victim.x - x, dy = victim.y - y, distance = Math.hypot(dx, dy)
+      if (distance > radius + fighterDef(victim).radius) continue
+      const nx = distance > 0.001 ? dx / distance : owner.facing, ny = distance > 0.001 ? dy / distance : 0
+      if (this.hit(victim, damage, nx * knockback, ny * knockback, owner) && victim.hp > 0) victim.stun = Math.max(victim.stun, stun)
+    }
+  }
+
+  private stepLuiBowEffects() {
+    for (const corpse of this.luiHorseCorpses) corpse.time += DT
+    this.luiHorseCorpses = this.luiHorseCorpses.filter((corpse) => corpse.time < LUI_HORSE.corpse)
+    for (const slash of this.luiInkSlashes) slash.time += DT
+    this.luiInkSlashes = this.luiInkSlashes.filter((slash) => slash.time < LUI_INK_SLASH_LIFE)
+    const R = LUI_BOW.rain, G = LUI_BOW.ground
+    this.luiArrowRains = this.luiArrowRains.filter((area) => area.owner.hp > 0 && !area.owner.zombie
+      && (area.released || area.owner.luiBowCast?.area === area))
+    for (const area of this.luiArrowRains) {
+      if (!area.released) continue
+      area.time += DT
+      while (area.waves < R.waves && area.time + 1e-8 >= R.flight + area.waves * R.every) {
+        area.waves++
+        this.hitLuiBowArea(area.owner, area.x, area.y, R.radius, R.damage * area.power)
+      }
+    }
+    this.luiArrowRains = this.luiArrowRains.filter((area) => area.owner.hp > 0 && !area.owner.zombie
+      && area.time < R.flight + (R.waves - 1) * R.every + 0.4)
+    for (const shot of this.luiGroundShots) {
+      shot.time += DT
+      if (shot.impacted || shot.time + 1e-8 < G.flight || shot.owner.hp <= 0 || shot.owner.zombie) continue
+      shot.impacted = true
+      this.craters.push({ x: shot.x, y: shot.y, life: G.crater })
+      this.hitLuiBowArea(shot.owner, shot.x, shot.y, G.radius, G.damage * shot.power, G.knockback, G.stun)
+    }
+    this.luiGroundShots = this.luiGroundShots.filter((shot) => shot.time < G.flight + G.effect
+      && (shot.impacted || shot.owner.hp > 0 && !shot.owner.zombie))
+  }
+
+  private canLuiCarnageMove(fighter: Fighter) {
+    return fighter.hp > 0 && !fighter.zombie && grounded(fighter) && fighter.stun <= 0 && fighter.frozen <= 0
+      && fighter.fear <= 0 && !fighter.lure && !fighter.mantisDuel && !fighter.luiCharge && !fighter.luiBowCast && fighter.luiEnhance === null
+  }
+
+  private tryLuiCarnage(fighter: Fighter, target: Fighter | null) {
+    const C = LUI_CARNAGE
+    if (fighter.species !== 'luifeng' || fighter.luiFoot || fighter.luiRemount !== null || fighter.luiCarnage || fighter.luiCarnageCooldown > 0 || !target
+      || !this.canLuiCarnageMove(fighter) || !targetable(fighter, target) || !grounded(target) || building(target)
+      || !canReach(fighter, target) || Math.hypot(target.x - fighter.x, target.y - fighter.y) > C.range) return false
+    let x = 0, y = 0, count = 0
+    for (const other of this.nearbyFighters(target.x, target.y, C.groupRadius)) {
+      if (!targetable(fighter, other) || !grounded(other) || building(other) || !canReach(fighter, other)
+        || Math.hypot(other.x - target.x, other.y - target.y) > C.groupRadius
+        || Math.hypot(other.x - fighter.x, other.y - fighter.y) > C.range) continue
+      x += other.x; y += other.y; count++
+    }
+    if (count < 2) return false
+    const def = fighterDef(fighter), marginX = Math.min(24 * def.size, this.width / 2)
+    const top = Math.min(41 * def.size - def.radius, this.height / 2), bottom = Math.min(12 * def.size, this.height / 2)
+    const radius = Math.min(C.orbit, (this.width - marginX * 2) / 2, (this.height - top - bottom) / 2)
+    if (radius < 8) return false
+    // Move the orbit inside the paper, never the rider; ordinary steering handles entry without a teleport.
+    x = Math.max(marginX + radius, Math.min(this.width - marginX - radius, x / count))
+    y = Math.max(top + radius, Math.min(this.height - bottom - radius, y / count))
+    fighter.luiCarnage = { time: 0, x, y, radius, direction: fighter.id % 2 ? 1 : -1, pulses: 0, ghostAt: 0 }
+    fighter.luiCarnageCooldown = C.cooldown
+    fighter.attack = 0
+    return this.stepLuiCarnage(fighter)
+  }
+
+  private stepLuiCarnage(fighter: Fighter) {
+    const C = LUI_CARNAGE, skill = fighter.luiCarnage!
+    if (!this.canLuiCarnageMove(fighter)) { fighter.luiCarnage = null; return false }
+    skill.time = Math.min(C.duration, skill.time + DT)
+    const dx = fighter.x - skill.x, dy = fighter.y - skill.y, distance = Math.hypot(dx, dy)
+    const nx = distance > 0.001 ? dx / distance : fighter.facing, ny = distance > 0.001 ? dy / distance : 0
+    const pull = Math.max(-1.5, Math.min(1.5, (distance - skill.radius) / Math.max(20, skill.radius * 0.25)))
+    const mx = -nx * pull - ny * skill.direction, my = -ny * pull + nx * skill.direction
+    const length = Math.hypot(mx, my) || 1
+    const speed = Math.PI * 2 * skill.radius * C.laps / C.duration * (fighter.luiAura > 0 ? LUI_ENHANCE.speed : 1)
+    this.move(fighter, mx / length * speed, my / length * speed)
+    if (Math.abs(fighter.vx) > 20) fighter.facing = fighter.vx > 0 ? 1 : -1
+
+    const due = Math.min(Math.ceil(C.duration / C.every), Math.floor((skill.time + 1e-8) / C.every) + 1)
+    while (skill.pulses < due) {
+      skill.pulses++
+      this.luiCarnageHit(fighter, false)
+      if (fighter.luiCarnage !== skill || !this.canLuiCarnageMove(fighter)) { fighter.luiCarnage = null; return true }
+    }
+    if (skill.time + 1e-8 >= skill.ghostAt) {
+      skill.ghostAt += C.ghostEvery
+      const def = fighterDef(fighter)
+      this.luiGhosts.push({ x: fighter.x, y: fighter.y, facing: fighter.facing, size: def.size, radius: def.radius,
+        team: fighter.team, frame: Math.floor(fighter.phase / (Math.PI * 2) * CAVALRY_GALLOP_FRAMES) % CAVALRY_GALLOP_FRAMES,
+        turn: skill.time * C.spin, life: C.ghostLife })
+    }
+    if (skill.time + 1e-8 >= C.duration) {
+      fighter.luiCarnage = null
+      this.luiCarnageHit(fighter, true)
+      fighter.cooldown = fighterDef(fighter).cooldown
+      fighter.vx = fighter.vy = 0
+    }
+    return true
+  }
+
+  private luiCarnageHit(owner: Fighter, finish: boolean) {
+    const C = LUI_CARNAGE, radius = finish ? C.finishRadius : C.radius
+    const power = owner.luiAura > 0 ? LUI_ENHANCE.power : 1
+    const damage = (finish ? C.finishDamage : C.damage) * power, knockback = finish ? C.finishKnockback : C.knockback
+    this.luiCarnageSlashes.push({ x: owner.x, y: owner.y - owner.elevation, facing: owner.facing, radius, time: 0, finish })
+    for (const victim of this.nearbyFighters(owner.x, owner.y, radius + this.gridRadius + 32)) {
+      if (!this.canLuiCarnageMove(owner)) break
+      if (!targetable(owner, victim) || !grounded(victim) || building(victim) || !canReach(owner, victim)) continue
+      const dx = victim.x - owner.x, dy = victim.y - owner.y, distance = Math.hypot(dx, dy)
+      if (distance > radius + fighterDef(victim).radius) continue
+      const nx = distance > 0.001 ? dx / distance : owner.facing, ny = distance > 0.001 ? dy / distance : 0
+      this.hit(victim, damage, nx * knockback, ny * knockback, owner, 0, true)
+    }
   }
 
   private spartanAttack(owner: Fighter, target: Fighter, nx: number, ny: number) {
@@ -4538,7 +4850,8 @@ export class Battle {
     const yan = fighter.species === 'yanjin'
     const meng = fighter.species === 'mengchuan'
     const kun = fighter.species === 'kunlun' && !fighter.kunlunOwner // clones don't sit
-    if ((fighter.species !== 'swordsaint' && !mei && !thor && !yan && !meng && !kun) || !canMeditate(fighter)) return false
+    const lui = fighter.species === 'luifeng'
+    if ((fighter.species !== 'swordsaint' && !mei && !thor && !yan && !meng && !kun && !lui) || !canMeditate(fighter)) return false
     if (fighter.yanDemon) { fighter.saintRest = null; return false } // the demon never sits still
     const def = fighterDef(fighter)
     // Once Yan Jin has driven his swords into the ground he keeps floating until an enemy shows up.
@@ -4551,7 +4864,20 @@ export class Battle {
       if (meal && !fighter.mengFeast && !this.mengDevils(fighter).length) {
         fighter.mengFeast = { body: meal, x: fighter.x, y: this.mengDevilHome(fighter), phase: 'out', time: 0 }
       }
-      if (thor) {
+      if (lui) {
+        const rest = fighter.saintRest, before = rest.time
+        rest.time += DT
+        fighter.luiBowMode = false
+        fighter.attack = fighter.casting = fighter.slam = 0
+        if (before < LUI_REST.spin && rest.time >= LUI_REST.spin) {
+          const x = fighter.x + fighter.facing * LUI_REST_TIP[0] * def.size
+          const y = fighter.y + def.radius + LUI_REST_TIP[1] * def.size
+          this.impacts.push({ x, y, radius: 30, life: LUI_REST.settle, color: '#221f33' })
+          this.craters.push({ x, y, life: 2 })
+        }
+        const healing = Math.max(0, Math.min(DT, rest.time - LUI_REST.spin - LUI_REST.settle))
+        fighter.hp = Math.min(def.hp, fighter.hp + LUI_REST.heal * healing)
+      } else if (thor) {
         fighter.attack = fighter.catching = fighter.casting = fighter.slam = 0
         fighter.saintRest.time += DT
         if (fighter.saintRest.time + DT * 0.01 >= THOR_REST.windup) {
@@ -4570,7 +4896,7 @@ export class Battle {
       this.move(fighter, 0, 0)
       return true
     }
-    if (mei || thor || yan || meng || kun) { fighter.saintRest = null; return false }
+    if (mei || thor || yan || meng || kun || lui) { fighter.saintRest = null; return false }
     let spot = fighter.saintRest?.kind === 'fish' && this.water.inWater(fighter.saintRest.x, fighter.saintRest.y) ? fighter.saintRest : null
     if (!spot && (this.tick + fighter.id) % 30 === 0) spot = this.nearestWater(fighter.x, fighter.y)
     fighter.saintRest = spot
@@ -4932,7 +5258,7 @@ export class Battle {
         if (star.caught.hp > 0 && star.caught.yanWard) continue // held still in the ward
         star.caught = undefined // the ward broke: it flies on as before
       }
-      const spear = star.kind === 'spear', sword = star.kind === 'sword', talisman = star.kind === 'talisman'
+      const spear = star.kind === 'spear', sword = star.kind === 'sword', talisman = star.kind === 'talisman', arrow = star.kind === 'arrow'
       if (star.hold !== undefined && star.hold > 0) {
         // A hovering barrage talisman: on release, aim near its target (or his current one) and fly.
         star.hold -= DT
@@ -4946,8 +5272,10 @@ export class Battle {
         continue
       }
       const speed = shurikenSpeed(star)
-      const damage = spear ? SPARTAN_THROW.damage * (star.power ?? 1) : sword ? SWORD_SAINT.damage * saintPower(owner) : NINJA.damage
-      const knockback = spear ? SPARTAN_THROW.knockback * (star.power ?? 1) : sword ? SWORD_SAINT.knockback * saintPower(owner) : NINJA.knockback
+      const damage = spear ? SPARTAN_THROW.damage * (star.power ?? 1) : sword ? SWORD_SAINT.damage * saintPower(owner)
+        : arrow ? (star.damage ?? LUI_BOW.shot.damage) * (star.power ?? 1) : NINJA.damage
+      const knockback = spear ? SPARTAN_THROW.knockback * (star.power ?? 1) : sword ? SWORD_SAINT.knockback * saintPower(owner)
+        : arrow ? star.knockback ?? LUI_BOW.shot.knockback : NINJA.knockback
       if (star.returning) {
         // Fly home and rejoin the swords around him.
         const dx = owner.x - star.x, dy = owner.y - star.y, d = Math.hypot(dx, dy) || 1
@@ -5008,6 +5336,7 @@ export class Battle {
       let victim: Fighter | null = null, nearest = Infinity
       for (const target of this.fighters) {
         if (target.hp <= 0 || target.stage === 'egg' || target.heldBy || target.thrown || target.inside || allies(owner, target)) continue
+        if (arrow && !targetable(owner, target)) continue
         if (!target.tower && Math.abs(star.elevation - target.elevation) > 24) continue
         if (target.tower && star.elevation > target.elevation + 24) continue
         if (segmentDistance(target.x, target.y, px, py, star.x, star.y) > fighterDef(target).radius + 3) continue
@@ -5445,6 +5774,384 @@ export class Battle {
   }
 
   // Turning demon and Ruin can't be stopped: no stun, freeze, fear, lure, lift or grab holds him.
+  // His horse falls at half health: he is thrown to the ground and fights on foot until it returns.
+  private unhorseLui(fighter: Fighter) {
+    this.cancelLuiBow(fighter)
+    if (fighter.saintRest?.kind === 'meditate') fighter.saintRest = null
+    fighter.luiCharge = fighter.luiCarnage = null
+    fighter.luiEnhance = null
+    fighter.luiAura = 0
+    fighter.luiBowMode = false
+    fighter.luiFoot = true
+    fighter.cavalryMounted = false
+    fighter.luiHorseTimer = fighter.luiIdle = 0
+    fighter.luiWeapon = 'spear'
+    fighter.attack = 0
+    fighter.stun = Math.max(fighter.stun, LUI_HORSE.fall)
+    this.luiHorseCorpses.push({ x: fighter.x, y: fighter.y, facing: fighter.facing, team: fighter.team, time: 0 })
+    this.impacts.push({ x: fighter.x, y: fighter.y, radius: 30, life: 0.4, smoke: true })
+  }
+
+  // On foot the horse comes back after a while, or sooner once nothing is left in sight.
+  private tickLuiHorse(fighter: Fighter) {
+    fighter.luiHorseTimer += DT
+    let seen = false
+    for (const other of this.nearbyFighters(fighter.x, fighter.y, LUI_FENG.detection)) {
+      if (targetable(fighter, other) && Math.hypot(other.x - fighter.x, other.y - fighter.y) <= LUI_FENG.detection) { seen = true; break }
+    }
+    fighter.luiIdle = seen ? 0 : fighter.luiIdle + DT
+    if ((fighter.luiHorseTimer >= LUI_HORSE.returnAfter || fighter.luiIdle >= LUI_HORSE.idleReturn) && !fighter.luiFootSkill
+      && fighter.stun <= 0 && fighter.frozen <= 0 && fighter.knockup <= 0 && !fighter.heldBy && !fighter.thrown && !fighter.falling
+      && !fighter.tower && grounded(fighter)) {
+      fighter.luiRemount = 0
+      fighter.luiFootShot = null
+      fighter.attack = 0
+    }
+  }
+
+  // Spear butt into the ground, ink covers him, the horse appears behind him and he backflips into the saddle.
+  private stepLuiRemount(fighter: Fighter) {
+    this.move(fighter, 0, 0)
+    fighter.luiRemount = (fighter.luiRemount ?? 0) + DT
+    if (fighter.luiRemount < LUI_HORSE.remount) return
+    fighter.luiRemount = null
+    fighter.luiFoot = false
+    fighter.cavalryMounted = true
+    fighter.luiHorseTimer = fighter.luiIdle = 0
+    fighter.hp = Math.min(UNITS.luifeng.hp, fighter.hp + UNITS.luifeng.hp * LUI_HORSE.heal)
+    this.impacts.push({ x: fighter.x, y: fighter.y - 20, radius: 50, life: 0.4, color: '#15151d' })
+  }
+
+  private canLuiFootAct(fighter: Fighter) {
+    return fighter.hp > 0 && !fighter.zombie && fighter.luiFoot && fighter.luiRemount === null && fighter.stun <= 0 && fighter.frozen <= 0
+      && fighter.fear <= 0 && !fighter.lure && !fighter.heldBy && !fighter.thrown && fighter.knockup <= 0 && !fighter.mantisDuel && !fighter.tower
+  }
+
+  private cancelLuiFootSkill(fighter: Fighter) {
+    const kind = fighter.luiFootSkill?.kind
+    fighter.luiFootSkill = null
+    fighter.luiFootShot = null
+    if (kind === 'strike' || kind === 'cutter') fighter.elevation = 0
+  }
+
+  // The angle from his foot bow anchor to a point, and where an arrow of `length` leaves the drawn bow.
+  private luiFootAim(fighter: Fighter, x: number, y: number) {
+    const def = fighterDef(fighter)
+    return Math.atan2(y - (fighter.y + def.radius + LUI_FOOT_BOW_ANCHOR[1] * def.size - fighter.elevation),
+      (x - fighter.x) * fighter.facing - LUI_FOOT_BOW_ANCHOR[0] * def.size)
+  }
+
+  private luiFootBowOrigin(fighter: Fighter, angle: number, length = LUI_ARROW) {
+    const def = fighterDef(fighter), [x, y] = luiBowTip(angle, length, LUI_FOOT_BOW_RIG)
+    return { x: fighter.x + x * def.size * fighter.facing, y: fighter.y + def.radius + y * def.size - fighter.elevation }
+  }
+
+  // An ordinary arrow from his foot bow at ground point (x, y), to arrive at body height (`elevation` + 12).
+  private fireLuiArrow(fighter: Fighter, x: number, y: number, elevation: number, speed: number, damage: number, knockback: number, range: number) {
+    const from = this.luiFootBowOrigin(fighter, this.luiFootAim(fighter, x, y - elevation - 12))
+    const dx = x - from.x, dy = y - fighter.y, flight = Math.max(0.05, Math.hypot(dx, dy) / speed), height = Math.max(0, fighter.y - from.y)
+    this.shuriken.push({ kind: 'arrow', owner: fighter, power: 1, damage, knockback, x: from.x, y: fighter.y, elevation: height,
+      vx: dx / flight, vy: dy / flight, vz: (elevation + 12 - height) / flight, life: range / speed })
+  }
+
+  // On foot: the weapon follows the distance, he holds that weapon's range, and strikes with it.
+  private stepLuiFoot(fighter: Fighter, target: Fighter) {
+    const W = LUI_WEAPON_BANDS, A = LUI_FOOT_ATTACKS, def = fighterDef(fighter)
+    const dx = target.x - fighter.x, dy = target.y - fighter.y, d = Math.hypot(dx, dy) || 1, nx = dx / d, ny = dy / d
+    const was = fighter.luiWeapon
+    fighter.luiWeapon = d <= W.sword + (was === 'sword' ? W.hysteresis : 0) ? 'sword'
+      : d > W.bow - (was === 'bow' ? W.hysteresis : 0) ? 'bow' : 'spear'
+    if (fighter.luiWeapon !== 'bow') fighter.luiFootShot = null
+    if (Math.abs(dx) > 2) fighter.facing = dx > 0 ? 1 : -1
+    const reach = def.radius + fighterDef(target).radius
+    let pull: number, side = 0
+    if (fighter.luiWeapon === 'bow') {
+      pull = d > A.bow.range ? 1 : Math.max(-0.8, Math.min(1, (d - LUI_FOOT_SPACING.bow) / 90))
+      side = d > A.bow.range ? 0 : fighter.id % 2 ? 0.4 : -0.4
+    } else if (fighter.luiWeapon === 'spear') pull = d < LUI_FOOT_SPACING.spearMin ? -0.8 : d > LUI_FOOT_SPACING.spearMax ? 1 : 0
+    else pull = d > A.sword.range * 0.5 + reach ? 1 : 0
+    const mx = nx * pull - ny * side, my = ny * pull + nx * side, length = Math.hypot(mx, my)
+    if (length > 0.01) this.move(fighter, mx / length * def.speed * Math.min(1, length), my / length * def.speed * Math.min(1, length))
+    else this.move(fighter, 0, 0)
+    const B = A.bow
+    if (fighter.luiFootShot !== null) {
+      fighter.luiFootShot += DT
+      if (fighter.luiFootShot >= B.draw) {
+        fighter.luiFootShot = null
+        if (d <= B.range && this.shuriken.length < MAX_FIGHTERS * 2) {
+          this.fireLuiArrow(fighter, target.x, target.y, target.elevation, B.speed, B.damage, B.knockback, B.range)
+          fighter.cooldown = B.cooldown
+        }
+      }
+      return true
+    }
+    if (fighter.cooldown > 0) return true
+    if (fighter.luiWeapon === 'bow') {
+      if (d <= B.range) fighter.luiFootShot = 0
+      return true
+    }
+    if (!grounded(target) || !canReach(fighter, target)) return true
+    const hit = fighter.luiWeapon === 'sword' ? A.sword : A.spear
+    if (d > (fighter.luiWeapon === 'sword' ? hit.range * 0.5 + reach + 8 : hit.range + fighterDef(target).radius)) return true
+    fighter.cooldown = hit.cooldown
+    fighter.attack = 1
+    this.hit(target, hit.damage, nx * hit.knockback, ny * hit.knockback, fighter, 0, true)
+    if (fighter.luiWeapon === 'spear') {
+      this.luiInkSlashes.push({ x: fighter.x + nx * 14, y: fighter.y - 16, angle: Math.atan2(ny, nx), radius: 0, facing: 1, time: 0, length: Math.max(20, d - 6) })
+    } else this.luiInkSlashes.push({ x: target.x, y: target.y - 16, angle: Math.atan2(ny, nx), radius: 18, facing: fighter.facing, time: 0, length: 0 })
+    return true
+  }
+
+  // How well a ready foot skill fits where the enemies are: 0 when it cannot apply here, otherwise a weight of 1 or more.
+  private luiFootScore(fighter: Fighter, target: Fighter, kind: LuiFootSkillKind) {
+    const d = Math.hypot(target.x - fighter.x, target.y - fighter.y)
+    const enemies = (x: number, y: number, radius: number) => {
+      let count = 0
+      for (const other of this.nearbyFighters(x, y, radius + this.gridRadius)) {
+        if (targetable(fighter, other) && grounded(other) && !building(other) && Math.hypot(other.x - x, other.y - y) <= radius + fighterDef(other).radius) count++
+      }
+      return count
+    }
+    const ux = (target.x - fighter.x) / (d || 1), uy = (target.y - fighter.y) / (d || 1)
+    const along = (width: number, length: number, cone = 0) => { // enemies in a line (or a cone) from him through the target
+      let count = 0
+      for (const other of this.nearbyFighters(fighter.x, fighter.y, length)) {
+        if (other === target || !targetable(fighter, other) || !grounded(other) || building(other)) continue
+        const ox = other.x - fighter.x, oy = other.y - fighter.y, forward = ox * ux + oy * uy
+        if (forward <= 0 || forward > length) continue
+        const across = Math.abs(ox * uy - oy * ux)
+        if (cone ? Math.atan2(across, forward) <= cone / 2 : across <= width + fighterDef(other).radius) count++
+      }
+      return count
+    }
+    const ground = grounded(target) && !building(target)
+    if (kind === 'stars') { const n = enemies(fighter.x, fighter.y, LUI_STARS.radius); return n >= 2 ? n : 0 }
+    if (kind === 'cutter') return !ground || d > LUI_CUTTER.range ? 0 : enemies(target.x, target.y, 120) <= 1 ? 2 : 1
+    if (kind === 'strike') return !ground || d > LUI_STRIKE.range ? 0 : enemies(target.x, target.y, LUI_STRIKE.landRadius)
+    if (kind === 'moon') return !ground ? 0 : 1 + along(30, 700)
+    if (kind === 'pierce') return target.elevation > 40 ? 0 : 1 + along(30, 900)
+    const n = 1 + along(0, LUI_BARRAGE.range, LUI_BARRAGE.spread)
+    return n >= 3 ? n * 2 : n
+  }
+
+  // A ready skill of his current weapon is rolled for at LUI_SKILL_ROLL a second; the best fit for the positions wins.
+  private tryLuiFootSkill(fighter: Fighter, target: Fighter | null) {
+    if (fighter.species !== 'luifeng' || !fighter.luiFoot || fighter.luiFootSkill || !target || !targetable(fighter, target)
+      || !this.canLuiFootAct(fighter) || !grounded(fighter)) return false
+    const candidates: [LuiFootSkillKind, number][] = []
+    for (const kind of LUI_FOOT_SKILLS) {
+      if (LUI_FOOT_SKILL_WEAPON[kind] !== fighter.luiWeapon || fighter.luiFootCooldowns[kind] > 0) continue
+      const score = this.luiFootScore(fighter, target, kind)
+      if (score > 0) candidates.push([kind, score])
+    }
+    if (!candidates.length || this.random() >= 1 - (1 - LUI_SKILL_ROLL) ** DT) return false
+    let kind = candidates[0][0], best = -1
+    for (const [option, score] of candidates) {
+      const roll = score * (0.75 + 0.5 * this.random())
+      if (roll > best) { best = roll; kind = option }
+    }
+    fighter.luiFootCooldowns[kind] = LUI_FOOT_COOLDOWNS[kind]
+    fighter.luiFootShot = null
+    fighter.attack = 0
+    if (Math.abs(target.x - fighter.x) > 2) fighter.facing = target.x > fighter.x ? 1 : -1
+    const skill: LuiFootSkill = { kind, time: 0, stage: 0, target, x: target.x, y: target.y, angle: 0, fromX: fighter.x, fromY: fighter.y, fired: 0, hits: new Set() }
+    if (kind === 'pierce' || kind === 'barrage') skill.angle = this.luiFootAim(fighter, target.x, target.y - target.elevation - 12)
+    if (kind === 'cutter') { // he lands 50 px past the target
+      const dx = target.x - fighter.x, dy = target.y - fighter.y, d = Math.hypot(dx, dy) || 1
+      skill.x = Math.max(0, Math.min(this.width, target.x + dx / d * 50))
+      skill.y = Math.max(0, Math.min(this.height, target.y + dy / d * 50))
+    }
+    fighter.luiFootSkill = skill
+    return this.stepLuiFootSkill(fighter)
+  }
+
+  // One tick of his foot skill. `stage` steps through its phases; `time` restarts at each stage.
+  private stepLuiFootSkill(fighter: Fighter) {
+    const skill = fighter.luiFootSkill!
+    if (!this.canLuiFootAct(fighter)) { this.cancelLuiFootSkill(fighter); return false }
+    const target = skill.target && targetable(fighter, skill.target) ? skill.target : null
+    const next = () => { skill.stage++; skill.time = 0 }
+    const end = () => { fighter.luiFootSkill = null; return true }
+    const face = (x: number) => { if (Math.abs(x - fighter.x) > 2) fighter.facing = x > fighter.x ? 1 : -1 }
+    const slash = (x: number, y: number, angle: number) =>
+      this.luiInkSlashes.push({ x, y: y - 16, angle, radius: 26, facing: fighter.facing, time: 0, length: 0 })
+    skill.time += DT
+    if (skill.kind === 'pierce' || skill.kind === 'barrage' || skill.kind === 'moon') {
+      this.move(fighter, 0, 0)
+      if (skill.stage === 0 && target) {
+        skill.x = target.x; skill.y = target.y
+        face(target.x)
+        if (skill.kind !== 'moon') skill.angle = this.luiFootAim(fighter, target.x, target.y - target.elevation - 12)
+      }
+    }
+    if (skill.kind === 'pierce') {
+      if (skill.stage === 0 && skill.time >= LUI_PIERCE.charge) {
+        const from = this.luiFootBowOrigin(fighter, skill.angle, LUI_INK_ARROW)
+        const dx = skill.x - from.x, dy = skill.y - fighter.y, d = Math.hypot(dx, dy) || 1
+        this.luiPiercers.push({ owner: fighter, kind: 'arrow', x: from.x, y: fighter.y, vx: dx / d * LUI_PIERCE.speed, vy: dy / d * LUI_PIERCE.speed, power: 1, hits: new Set() })
+        next()
+      } else if (skill.stage === 1 && skill.time >= LUI_BOW.recover) return end()
+      return true
+    }
+    if (skill.kind === 'barrage') {
+      const B = LUI_BARRAGE
+      if (skill.stage === 0) { if (skill.time >= B.charge) next(); return true }
+      const due = Math.min(B.arrows, Math.floor(skill.time / B.duration * B.arrows) + 1)
+      const distance = Math.max(60, Math.hypot(skill.x - fighter.x, skill.y - fighter.y)), aim = Math.atan2(skill.y - fighter.y, skill.x - fighter.x)
+      while (skill.fired < due && this.shuriken.length < MAX_FIGHTERS * 2) {
+        skill.fired++
+        const heading = aim + (this.random() - 0.5) * B.spread
+        this.fireLuiArrow(fighter, fighter.x + Math.cos(heading) * distance, fighter.y + Math.sin(heading) * distance, target?.elevation ?? 0,
+          B.speed, B.damage, B.knockback, B.range)
+      }
+      return skill.time >= B.duration ? end() : true
+    }
+    if (skill.kind === 'moon') {
+      if (skill.stage === 0 && skill.time >= LUI_MOON.charge) {
+        const dx = skill.x - fighter.x, dy = skill.y - fighter.y, d = Math.hypot(dx, dy) || 1
+        this.luiPiercers.push({ owner: fighter, kind: 'moon', x: fighter.x + dx / d * 20, y: fighter.y, vx: dx / d * LUI_MOON.speed, vy: dy / d * LUI_MOON.speed,
+          power: 1, hits: new Set() })
+        next()
+      } else if (skill.stage === 1 && skill.time >= LUI_MOON.swing) return end()
+      return true
+    }
+    if (skill.kind === 'strike') {
+      const S = LUI_STRIKE
+      if (skill.stage <= 2) {
+        this.move(fighter, 0, 0)
+        fighter.elevation = skill.stage === 0 ? S.height * Math.sin(Math.PI / 2 * Math.min(1, skill.time / S.rise)) : S.height
+        if (skill.stage < 2 && target) { skill.x = target.x; skill.y = target.y; face(target.x) }
+      }
+      if (skill.stage === 0 && skill.time >= S.rise) next()
+      else if (skill.stage === 1 && skill.time >= S.lean) { // throw: the spear flies down from his raised hand
+        skill.fromX = fighter.x + fighter.facing * 8
+        skill.fromY = fighter.y - fighter.elevation - 20
+        skill.angle = Math.atan2(skill.y - skill.fromY, skill.x - skill.fromX)
+        next()
+      } else if (skill.stage === 2 && skill.time >= S.throw) { // the spear lands: whoever it hits is slowed
+        if (target && grounded(target) && Math.hypot(target.x - skill.x, target.y - skill.y) <= S.hitRadius + fighterDef(target).radius
+          && this.hit(target, S.damage, 0, 0, fighter) && target.hp > 0) {
+          target.slow = Math.max(target.slow, S.slow)
+          target.slowAmount = S.slowAmount
+        }
+        this.impacts.push({ x: skill.x, y: skill.y, radius: 20, life: 0.25, color: '#15151d' })
+        next()
+      } else if (skill.stage === 3) { // he dives straight down to his spear
+        const left = Math.max(DT, S.dive - skill.time + DT)
+        fighter.x += (skill.x - fighter.x) * Math.min(1, DT / left)
+        fighter.y += (skill.y - fighter.y) * Math.min(1, DT / left)
+        fighter.vx = fighter.vy = 0
+        fighter.elevation = S.height * Math.max(0, 1 - skill.time / S.dive)
+        this.clamp(fighter)
+        if (skill.time >= S.dive) { // landing: everyone round the spear is knocked up and stunned
+          fighter.elevation = 0
+          for (const victim of this.nearbyFighters(fighter.x, fighter.y, S.landRadius + this.gridRadius)) {
+            if (!targetable(fighter, victim) || !grounded(victim) || building(victim)) continue
+            if (Math.hypot(victim.x - fighter.x, victim.y - fighter.y) > S.landRadius + fighterDef(victim).radius) continue
+            if (this.hit(victim, S.landDamage, 0, 0, fighter) && victim.hp > 0) {
+              victim.knockup = victim.knockupAir = YAN_JIN_SLAM.air
+              victim.knockupFree = false
+            }
+          }
+          this.impacts.push({ x: fighter.x, y: fighter.y, radius: S.landRadius, life: 0.35, color: '#15151d' })
+          next()
+        }
+      } else if (skill.stage === 4) {
+        this.move(fighter, 0, 0)
+        if (skill.time >= 0.2) return end()
+      }
+      return true
+    }
+    if (skill.kind === 'cutter') {
+      const K = LUI_CUTTER
+      if (skill.stage === 0) { // backflip over the enemy, cutting as he passes above it
+        const p = Math.min(1, skill.time / K.flip)
+        fighter.x = skill.fromX + (skill.x - skill.fromX) * p
+        fighter.y = skill.fromY + (skill.y - skill.fromY) * p
+        fighter.vx = fighter.vy = 0
+        fighter.elevation = Math.sin(Math.PI * p) * K.flipHeight
+        this.clamp(fighter)
+        if (!skill.fired && p >= 0.5) {
+          skill.fired = 1
+          const angle = Math.atan2(skill.y - skill.fromY, skill.x - skill.fromX)
+          slash(fighter.x, fighter.y - fighter.elevation * 0.5, angle + Math.PI / 2)
+          if (target && grounded(target) && Math.hypot(target.x - fighter.x, target.y - fighter.y) <= 50 + fighterDef(target).radius) this.hit(target, K.damage, 0, 0, fighter)
+        }
+        if (p >= 1) { fighter.elevation = 0; if (target) face(target.x); next() }
+      } else if (skill.stage === 1) {
+        this.move(fighter, 0, 0)
+        if (target) face(target.x)
+        if (skill.time >= K.land) { // dash back through it
+          const tx = target?.x ?? skill.fromX, ty = target?.y ?? skill.fromY
+          const dx = tx - fighter.x, dy = ty - fighter.y, d = Math.hypot(dx, dy) || 1
+          skill.fromX = fighter.x; skill.fromY = fighter.y
+          skill.x = Math.max(0, Math.min(this.width, fighter.x + dx / d * K.dashDistance))
+          skill.y = Math.max(0, Math.min(this.height, fighter.y + dy / d * K.dashDistance))
+          skill.fired = 0
+          next()
+        }
+      } else {
+        const p = Math.min(1, skill.time / K.dash)
+        fighter.x = skill.fromX + (skill.x - skill.fromX) * p
+        fighter.y = skill.fromY + (skill.y - skill.fromY) * p
+        fighter.vx = fighter.vy = 0
+        this.clamp(fighter)
+        if (!skill.fired && target && Math.hypot(target.x - fighter.x, target.y - fighter.y) <= 30 + fighterDef(fighter).radius + fighterDef(target).radius) {
+          skill.fired = 1
+          const angle = Math.atan2(skill.y - skill.fromY, skill.x - skill.fromX)
+          if (grounded(target)) this.hit(target, K.damage, Math.cos(angle) * 120, Math.sin(angle) * 120, fighter)
+          slash(target.x, target.y, angle)
+        }
+        if (p >= 1) return end()
+      }
+      return true
+    }
+    // Playful Stars: spin pulling enemies in, then pierce the ground and blast them away.
+    const T = LUI_STARS
+    this.move(fighter, 0, 0)
+    if (skill.stage === 0) {
+      const tick = Math.floor(skill.time / T.tick) > Math.floor((skill.time - DT) / T.tick)
+      for (const victim of this.nearbyFighters(fighter.x, fighter.y, T.radius + this.gridRadius)) {
+        if (!targetable(fighter, victim) || !grounded(victim) || building(victim)) continue
+        const dx = fighter.x - victim.x, dy = fighter.y - victim.y, d = Math.hypot(dx, dy)
+        if (d > T.radius + fighterDef(victim).radius) continue
+        const step = Math.min(Math.max(0, d - fighterDef(victim).radius - fighterDef(fighter).radius), T.pull * DT)
+        if (d > 0.001) { victim.x += dx / d * step; victim.y += dy / d * step; this.clamp(victim) }
+        if (tick) this.hit(victim, T.tickDamage, 0, 0, fighter)
+      }
+      if (skill.time >= T.spin) next()
+    } else if (!skill.fired) {
+      skill.fired = 1
+      for (const victim of this.nearbyFighters(fighter.x, fighter.y, T.radius + this.gridRadius)) {
+        if (!targetable(fighter, victim) || !grounded(victim) || building(victim)) continue
+        const dx = victim.x - fighter.x, dy = victim.y - fighter.y, d = Math.hypot(dx, dy)
+        if (d > T.radius + fighterDef(victim).radius) continue
+        const nx = d > 0.001 ? dx / d : fighter.facing, ny = d > 0.001 ? dy / d : 0
+        this.hit(victim, T.damage, nx * T.knockback, ny * T.knockback, fighter)
+      }
+      this.impacts.push({ x: fighter.x, y: fighter.y, radius: 40, life: 0.3, color: '#15151d' })
+    } else if (skill.time >= T.plant) return end()
+    return true
+  }
+
+  // Piercing Shot's arrow and Heavenly Slash's crescent fly through every ground enemy once, until they leave the arena.
+  private stepLuiPiercers() {
+    this.luiPiercers = this.luiPiercers.filter((piercer) => piercer.owner.hp > 0 && !piercer.owner.zombie
+      && piercer.x > -60 && piercer.x < this.width + 60 && piercer.y > -60 && piercer.y < this.height + 60)
+    for (const piercer of this.luiPiercers) {
+      piercer.x += piercer.vx * DT
+      piercer.y += piercer.vy * DT
+      const P = piercer.kind === 'arrow' ? LUI_PIERCE : LUI_MOON, speed = Math.hypot(piercer.vx, piercer.vy) || 1
+      const nx = piercer.vx / speed, ny = piercer.vy / speed
+      for (const victim of this.nearbyFighters(piercer.x, piercer.y, P.radius + 40)) {
+        if (piercer.hits.has(victim) || !targetable(piercer.owner, victim) || victim.elevation > 40) continue
+        if (Math.hypot(victim.x - piercer.x, victim.y - piercer.y) > P.radius + fighterDef(victim).radius) continue
+        piercer.hits.add(victim)
+        this.hit(victim, P.damage * piercer.power, nx * P.knockback, ny * P.knockback, piercer.owner)
+      }
+    }
+  }
+
   private yanUnstoppable(fighter: Fighter) {
     fighter.stun = fighter.frozen = fighter.fear = fighter.dizzy = fighter.knockup = 0
     fighter.float = null
@@ -6916,6 +7623,12 @@ export class Battle {
     this.mengBreezes = this.mengBreezes.filter((breeze) => breeze.time < MENG_BREEZE.paint)
     for (const sweep of this.luiSweeps) sweep.time += DT
     this.luiSweeps = this.luiSweeps.filter((sweep) => sweep.time < LUI_SWEEP.life && sweep.owner.hp > 0)
+    for (const ghost of this.luiGhosts) ghost.life -= DT
+    this.luiGhosts = this.luiGhosts.filter((ghost) => ghost.life > 0)
+    for (const slash of this.luiCarnageSlashes) slash.time += DT
+    this.luiCarnageSlashes = this.luiCarnageSlashes.filter((slash) => slash.time < (slash.finish ? LUI_CARNAGE.finishLife : LUI_CARNAGE.trailLife))
+    this.stepLuiBowEffects()
+    this.stepLuiPiercers()
     for (const ring of this.mengRings) ring.time += DT
     this.mengRings = this.mengRings.filter((ring) => ring.time < Math.max(MENG_RING.life, MENG_RING.title))
     for (const spark of this.mengParries) spark.life -= DT
@@ -6941,6 +7654,9 @@ export class Battle {
     this.katanaSlashes = this.katanaSlashes.filter((slash) => slash.life > 0)
     // Local targeting uses the same spatial buckets as crowd separation at the 1,000-creature cap.
     for (const fighter of this.fighters) {
+      if (fighter.luiBowCast && !this.canLuiBowAct(fighter)) this.cancelLuiBow(fighter)
+      if ((fighter.luiFootSkill || fighter.luiFootShot !== null) && !this.canLuiFootAct(fighter)) this.cancelLuiFootSkill(fighter)
+      if (fighter.luiCarnage && !this.canLuiCarnageMove(fighter)) fighter.luiCarnage = null
       if (fighter.saintRest?.kind === 'meditate' && !canMeditate(fighter)) fighter.saintRest = null
       if (fighter.hp <= 0 && spartanCommanderProtected(fighter)) fighter.hp = 1
       if (fighter.hp <= 0) continue
@@ -7011,6 +7727,9 @@ export class Battle {
       fighter.skillCooldown = Math.max(0, fighter.skillCooldown - DT)
       fighter.luiAura = Math.max(0, fighter.luiAura - DT)
       fighter.luiChargeCooldown = Math.max(0, fighter.luiChargeCooldown - DT)
+      fighter.luiCarnageCooldown = Math.max(0, fighter.luiCarnageCooldown - DT)
+      fighter.luiRainCooldown = Math.max(0, fighter.luiRainCooldown - DT)
+      fighter.luiGroundCooldown = Math.max(0, fighter.luiGroundCooldown - DT)
       fighter.mengParry = Math.max(0, fighter.mengParry - DT)
       fighter.mengCloneCooldown = Math.max(0, fighter.mengCloneCooldown - DT)
       fighter.mengKasayaCooldown = Math.max(0, fighter.mengKasayaCooldown - DT)
@@ -7046,6 +7765,9 @@ export class Battle {
         const power = saintPower(fighter)
         if (!fighter.saint) fighter.swordStack = Math.min(SWORD_SAINT_SWORDS.max * power, fighter.swordStack + DT / SWORD_SAINT_SWORDS.summon * power)
       }
+      if (fighter.species === 'luifeng' && !fighter.zombie && !fighter.luiFoot && fighter.luiRemount === null
+        && fighter.hp <= UNITS.luifeng.hp * LUI_HORSE.threshold) this.unhorseLui(fighter)
+      else if (fighter.species === 'luifeng' && fighter.luiFoot && !fighter.zombie && fighter.luiRemount === null) this.tickLuiHorse(fighter)
       if (fighter.cavalryMounted && fighter.species === 'cavalry' && fighter.hp <= def.hp * CAVALRY_RIDE.dismount) {
         fighter.cavalryMounted = false
         fighter.stun = Math.max(fighter.stun, CAVALRY_RIDE.fall)
@@ -7057,6 +7779,8 @@ export class Battle {
       fighter.fear = Math.max(0, fighter.fear - DT)
       fighter.stun = Math.max(0, fighter.stun - DT)
       fighter.dizzy = Math.max(0, fighter.dizzy - DT)
+      fighter.slow = Math.max(0, fighter.slow - DT)
+      if (fighter.species === 'luifeng') for (const kind of LUI_FOOT_SKILLS) fighter.luiFootCooldowns[kind] = Math.max(0, fighter.luiFootCooldowns[kind] - DT)
       fighter.roar = Math.max(0, fighter.roar - DT)
       fighter.song = Math.max(-SIREN_SONG.ballad, fighter.song - DT)
       this.stepMantisCloak(fighter)
@@ -7086,6 +7810,7 @@ export class Battle {
       this.tryMengGod(fighter)
       if (fighter.mengGod) { this.yanUnstoppable(fighter); this.stepMengGod(fighter); continue } // nor during his ultimate
       if (fighter.mengLeap) { this.yanUnstoppable(fighter); this.stepMengLeap(fighter); continue } // nor the body form's
+      if (fighter.luiRemount !== null) { this.yanUnstoppable(fighter); this.stepLuiRemount(fighter); continue } // his horse's return can't be stopped
       if (fighter.knockup > 0) { this.stepKnockup(fighter); continue }
       if (fighter.float) { this.stepFloat(fighter); continue }
       if (this.stepMantisMoonSlash(fighter)) continue
@@ -7164,6 +7889,9 @@ export class Battle {
       if (this.tryMeiTransform(fighter)) continue
       if (fighter.mei && this.stepMei(fighter)) continue
       if (fighter.kunlun && this.stepKunlun(fighter)) continue
+      if (fighter.luiBowCast && this.stepLuiBowCast(fighter)) continue
+      if (fighter.luiFootSkill && this.stepLuiFootSkill(fighter)) continue
+      if (fighter.luiCarnage && this.stepLuiCarnage(fighter)) continue
       if (fighter.luiEnhance !== null && this.stepLuiEnhance(fighter)) continue
       if (fighter.luiCharge && this.stepLuiCharge(fighter)) continue
       if (this.tryKunlunWall(fighter)) continue
@@ -7200,6 +7928,11 @@ export class Battle {
         }
       }
       fighter.target = target
+      if (fighter.species === 'luifeng' && !fighter.zombie && !fighter.luiFoot) {
+        const distance = target ? Math.hypot(target.x - fighter.x, target.y - fighter.y) : 0
+        if (distance <= LUI_BOW.exit) fighter.luiBowMode = false
+        else if (distance >= LUI_BOW.enter) fighter.luiBowMode = true
+      }
       // A fishing saint ignores enemies he can see; only an attack (and his fish counter) breaks his calm.
       if (target && fighter.saintRest?.kind === 'fish' && !retaliation) fighter.target = target = null
       else if (target) fighter.saintRest = null
@@ -7226,7 +7959,11 @@ export class Battle {
       if (this.tryMengAssault(fighter, target)) continue
       if (this.tryMeiSkill(fighter, target)) continue
       if (this.tryKunlunSkill(fighter, target)) continue
+      if (this.tryLuiFootSkill(fighter, target)) continue
       if (this.tryLuiEnhance(fighter, target)) continue
+      if (this.tryLuiBowSkill(fighter, target, 'ground')) continue
+      if (this.tryLuiCarnage(fighter, target)) continue
+      if (this.tryLuiBowSkill(fighter, target, 'rain')) continue
       if (this.tryLuiCharge(fighter, target)) continue
       if (this.stepSpartanFormation(fighter, domainOwner !== null)) continue
       if (!domainOwner && fighter.species === 'ant-tank' && fighter.antHome && target
@@ -7256,6 +7993,8 @@ export class Battle {
       if (fighter.fear > 0 && fighter.scaredBy && !concealed(fighter.scaredBy)) target = fighter.scaredBy
       else fighter.scaredBy = null
       if (target && fighter.stun <= 0) {
+        if (fighter.fear <= 0 && fighter.luiFoot && fighter.species === 'luifeng' && !fighter.zombie && this.stepLuiFoot(fighter, target)) continue
+        if (fighter.fear <= 0 && this.stepLuiArchery(fighter, target)) continue
         if (fighter.fear <= 0 && this.attackTower(fighter, target)) continue
         const dx = target.x - fighter.x, dy = target.y - fighter.y
         const d = Math.hypot(dx, dy)
@@ -7443,8 +8182,12 @@ export class Battle {
     for (const duel of this.mantisDuels) this.constrainMantisDuel(duel)
     for (const fighter of this.fighters) {
       if (fighter.hp <= 0 && spartanCommanderProtected(fighter)) fighter.hp = 1
+      if (fighter.luiBowCast && !this.canLuiBowAct(fighter)) this.cancelLuiBow(fighter)
+      if ((fighter.luiFootSkill || fighter.luiFootShot !== null) && !this.canLuiFootAct(fighter)) this.cancelLuiFootSkill(fighter)
+      if (fighter.luiCarnage && !this.canLuiCarnageMove(fighter)) fighter.luiCarnage = null
       const def = fighterDef(fighter)
       if (fighter.hp <= 0) {
+        fighter.luiCarnage = null
         fighter.saintRest = null
         leaveSpartanFormation(fighter)
         this.removeMantisFromDuel(fighter)
@@ -7520,12 +8263,79 @@ export class Battle {
     }
     this.hammers = this.hammers.filter((hammer) => hammer.owner.hp > 0)
     this.shuriken = this.shuriken.filter((star) => star.owner.hp > 0)
+    this.luiArrowRains = this.luiArrowRains.filter((area) => area.owner.hp > 0 && !area.owner.zombie)
+    this.luiGroundShots = this.luiGroundShots.filter((shot) => shot.impacted || shot.owner.hp > 0 && !shot.owner.zombie)
     this.giantSwords = this.giantSwords.filter((sword) => sword.owner.hp > 0)
     this.shots = this.shots.filter((shot) => shot.owner.hp > 0)
     this.storms = this.storms.filter((area) => area.phase === 'impact' || area.owner.hp > 0)
     this.kunlunWalls = this.kunlunWalls.filter((wall) => wall.owner.hp > 0)
     this.kunlunCrescents = this.kunlunCrescents.filter((wave) => wave.owner.hp > 0)
     this.kunlunBolts = this.kunlunBolts.filter((bolt) => bolt.owner.hp > 0)
+  }
+}
+
+type LuiFootPoses = NonNullable<Sprites['luifeng']['red']['luiFoot']>
+
+// Foot Lui Feng's pose: thrown down, mid-skill, striking, or standing with his current weapon.
+function luiFootSprite(p: LuiFootPoses, fighter: Fighter) {
+  const remount = fighter.luiRemount, skill = fighter.luiFootSkill
+  if (remount !== null) return remount < LUI_REMOUNT.flip ? p.butt : p.spin
+  if (fighter.stun > 0 && fighter.luiHorseTimer < LUI_HORSE.fall) return p.fallen
+  if (skill) {
+    if (skill.kind === 'strike') return skill.stage < 2 ? p.raise : skill.stage < 4 ? p.throw : p.butt
+    if (skill.kind === 'moon') return skill.stage === 0 ? p.back : p.thrust
+    if (skill.kind === 'cutter') return skill.stage === 0 ? p.spin : skill.stage === 1 ? p.stand.sword : p.slash
+    if (skill.kind === 'stars') return skill.stage === 0 ? p.spin : p.plant
+    return p.stand.bow
+  }
+  if (fighter.attack > 0 && fighter.luiWeapon !== 'bow') return fighter.luiWeapon === 'sword' ? p.slash : p.thrust
+  return p.stand[fighter.luiWeapon]
+}
+
+// Foot Lui Feng in his fighter space: the returning horse behind him, his sprite (tilted, flipped or spun by a skill),
+// the live longbow, charge glows, and the ink that covers him while the horse returns.
+function drawLuiFootFighter(c: CanvasRenderingContext2D, horse: HTMLCanvasElement, fighter: Fighter, sprite: HTMLCanvasElement,
+  def: { size: number; radius: number }, tick: number) {
+  const r = fighter.luiRemount, skill = fighter.luiFootSkill, scale = UNITS.luifeng.size / def.size, P = LUI_REMOUNT
+  if (r !== null && r >= P.covered) { c.save(); c.scale(scale, scale); c.drawImage(horse, -24, -44, 48, 48); c.restore() }
+  c.save()
+  if (r !== null && r >= P.flip) { // backflip from in front of the horse up into its saddle
+    const p = (r - P.flip) / (LUI_HORSE.remount - P.flip), seatX = (22 - 24) * FIT * scale, seatY = (21 - 44) * FIT * scale
+    c.translate(seatX * p, seatY * p - Math.sin(Math.PI * p) * 22)
+    c.translate(0, -22); c.rotate(-Math.PI * 2 * p); c.translate(0, 22)
+  } else if (skill?.kind === 'strike' && (skill.stage === 1 || skill.stage === 3)) {
+    c.translate(0, -22); c.rotate(skill.stage === 1 ? -0.4 : 0.9); c.translate(0, 22)
+  } else if (skill?.kind === 'cutter' && skill.stage === 0) {
+    c.translate(0, -22); c.rotate(-Math.PI * 2 * Math.min(1, skill.time / LUI_CUTTER.flip)); c.translate(0, 22)
+  } else if (skill?.kind === 'stars' && skill.stage === 0) c.scale(Math.cos(skill.time * 35), 1)
+  c.drawImage(sprite, -24, -44, 48, 48)
+  c.restore()
+  const bowSkill = skill?.kind === 'pierce' || skill?.kind === 'barrage'
+  if (r === null && fighter.luiWeapon === 'bow' && (!skill || bowSkill) && !(fighter.stun > 0 && fighter.luiHorseTimer < LUI_HORSE.fall)) {
+    const target = fighter.target
+    let angle = target ? Math.atan2(target.y - target.elevation - 12 - (fighter.y + def.radius + LUI_FOOT_BOW_ANCHOR[1] * def.size - fighter.elevation),
+      (target.x - fighter.x) * fighter.facing - LUI_FOOT_BOW_ANCHOR[0] * def.size) : 0
+    let draw = 0.1, after = -1, ink = 0
+    const B = LUI_FOOT_ATTACKS.bow, since = B.cooldown - fighter.cooldown
+    if (skill && bowSkill) {
+      angle = skill.angle
+      if (skill.stage === 0) {
+        draw = 1 - (1 - Math.min(1, skill.time / 0.35)) ** 2
+        ink = skill.kind === 'pierce' ? Math.min(1, skill.time / LUI_PIERCE.charge) : 0
+      } else after = skill.kind === 'pierce' ? skill.time : skill.time % (LUI_BARRAGE.duration / LUI_BARRAGE.arrows)
+    } else if (fighter.luiFootShot !== null) draw = 1 - (1 - Math.min(1, fighter.luiFootShot / B.draw)) ** 2
+    else if (since >= 0 && since < LUI_BOW.recover) after = since
+    drawLuiFootBow(c, angle, draw, after, ink)
+    if (skill && bowSkill && skill.stage === 0) {
+      const charge = skill.kind === 'pierce' ? LUI_PIERCE.charge : LUI_BARRAGE.charge
+      const [x, y] = luiBowTip(angle, LUI_ARROW + (LUI_INK_ARROW - LUI_ARROW) * ink, LUI_FOOT_BOW_RIG)
+      drawInkCharge(c, x, y, Math.min(1, skill.time / charge), skill.time, fighter.id)
+    }
+  }
+  if (skill?.kind === 'moon' && skill.stage === 0) drawInkCharge(c, 4.7 - 24, 20.3 - 44, Math.min(1, skill.time / LUI_MOON.charge), skill.time, fighter.id)
+  if (r !== null) {
+    drawLuiInkCover(c, r < P.plant ? 0.35 * r / P.plant : r < P.covered ? 0.35 + 0.65 * (r - P.plant) / (P.covered - P.plant)
+      : Math.max(0, 1 - (r - P.covered) / (P.flip - P.covered)), tick)
   }
 }
 
@@ -7592,6 +8402,24 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
   for (const ring of battle.mengRings) drawMengRing(c, ring.x, ring.y, ring.time, ring.seed, -1) // its far side passes behind him
   for (const print of battle.mengPrints) drawMengPrint(c, print.x, print.y, print.angle, print.age, print.seed)
   for (const ink of battle.yanInks) drawYanInk(c, ink.x, ink.y, ink.size, ink.age, ink.life, ink.seed, ink.red)
+  for (const area of battle.luiArrowRains) drawLuiRain(c, area, false)
+  for (const shot of battle.luiGroundShots) drawLuiGround(c, shot, false)
+  for (const corpse of battle.luiHorseCorpses) drawLuiHorseCorpse(c, corpse.x, corpse.y + LUI_FENG.radius, corpse.facing, corpse.time)
+  for (const slash of battle.luiCarnageSlashes) {
+    drawLuiCarnageSlash(c, slash.x, slash.y, slash.radius, slash.facing, slash.time, slash.finish)
+  }
+  for (const ghost of battle.luiGhosts) {
+    const poses = sprites.luifeng[ghost.team].lui
+    if (!poses) continue
+    c.save()
+    c.translate(ghost.x, ghost.y + ghost.radius)
+    c.scale(ghost.facing * ghost.size, ghost.size)
+    c.globalAlpha = (ghost.life / LUI_CARNAGE.ghostLife) ** 1.4 * 0.32
+    c.drawImage(poses.ghost[ghost.frame], -24, -44, 48, 48)
+    c.globalAlpha *= 0.6
+    drawLuiSpin(c, ghost.turn)
+    c.restore()
+  }
   for (const ghost of battle.kunlunGhosts) { // Storm Spin's afterimages fading behind him
     c.save()
     c.translate(ghost.x, ghost.y + KUNLUN.radius)
@@ -7790,8 +8618,14 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     const def = fighterDef(fighter)
     const poses = sprites[fighter.species][fighter.team]
     const luiCharge = fighter.luiCharge
+    const luiCarnage = fighter.luiCarnage
+    const luiBowCast = fighter.luiBowCast
+    const luiFoot = poses.luiFoot && fighter.luiFoot && !fighter.zombie ? poses.luiFoot : null
+    const luiBowVisible = !!poses.lui && !fighter.zombie && !luiCharge && !luiCarnage && fighter.luiEnhance === null
+      && fighter.saintRest?.kind !== 'meditate' && grounded(fighter) && !!(luiBowCast || fighter.luiBowMode)
     // His halberd follows the head of his latest sweep's blade trail while it is still going round.
-    const luiSwing = poses.lui && !fighter.zombie && !luiCharge && fighter.luiEnhance === null
+    const luiSwing = poses.lui && !fighter.zombie && !luiCharge && !luiCarnage && !luiBowVisible
+      && fighter.saintRest?.kind !== 'meditate' && fighter.luiEnhance === null
       ? battle.luiSweeps.findLast((sweep) => sweep.owner === fighter && sweep.time < LUI_SWEEP.time) : undefined
     const luiSweeping = !!luiSwing
     const mantis = poses.mantis?.[fighter.mantisForm]
@@ -7898,6 +8732,7 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     const saintWarding = fighter.saintWard > 0 && !fighter.saint, saintScale = saintPower(fighter)
     const rest = !fighter.zombie && !fighter.saint && (fighter.saintRest?.kind !== 'meditate' || canMeditate(fighter)) ? fighter.saintRest : null
     const meditating = rest?.kind === 'meditate'
+    const luiRest = poses.lui && meditating ? rest : null
     const saintOrbit = saintWarding ? 'ward' : meditating ? 'meditate' : null
     const saintHelpers = fighter.saint?.phase === 'melee' ? fighter.saint.helpers : []
     const mengThunder = poses.meng && fighter.mengThunder && !fighter.zombie ? poses.meng.thunder : undefined, mengPoses = mengThunder ?? poses.meng
@@ -8147,7 +8982,7 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     // Yan Jin lifts the greatsword once his third slice has landed, and streaks while dashing.
     const yanRaising = fighter.yanCombo >= YAN_JIN_COMBO.slices && fighter.attack < 0.5 && fighter.slam <= 0
     const yanDash = poses.yan ? Math.min(1, Math.max(0, (Math.hypot(fighter.vx, fighter.vy) - def.speed * 1.4) / 200)) : 0
-    const picked = fighter.zombie ? mantis?.zombie ?? knife?.zombie ?? evolvedRex?.zombie ?? dragon?.zombie ?? phoenix?.zombie ?? (fighter.stage === 'chick' ? poses.zombie.chick! : poses.zombie.ready)
+    const picked = fighter.zombie ? (fighter.luiFoot ? poses.luiFoot?.zombie : undefined) ?? mantis?.zombie ?? knife?.zombie ?? evolvedRex?.zombie ?? dragon?.zombie ?? phoenix?.zombie ?? (fighter.stage === 'chick' ? poses.zombie.chick! : poses.zombie.ready)
       : evolvedRex ? evolvedRex.ready
       : dragon && fighter.dragonSleeping ? dragon.sleeping
       : dragon ? breath || fighter.lightningSword || (fighter.dragonDomain && fighter.dragonDomain.time < DOMAIN_SEAL)
@@ -8177,6 +9012,10 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
       : mantis && fighter.attack > 0 ? mantis.strike
       : mantis && mantisGuard(fighter) ? mantis.guard
       : mantis ? mantis.ready
+      : luiFoot ? luiFootSprite(luiFoot, fighter)
+      : luiRest ? luiRest.time < LUI_REST.spin ? poses.lui!.raise : poses.lui!.meditate
+      : poses.lui && luiCarnage ? poses.lui.carnage[Math.floor(fighter.phase / (Math.PI * 2) * CAVALRY_GALLOP_FRAMES) % CAVALRY_GALLOP_FRAMES]
+      : luiBowVisible ? poses.lui!.bow[moving < 0.15 ? CAVALRY_GALLOP_FRAMES : Math.floor(fighter.phase / (Math.PI * 2) * CAVALRY_GALLOP_FRAMES) % CAVALRY_GALLOP_FRAMES]
       : poses.lui && fighter.luiEnhance !== null ? fighter.luiEnhance < LUI_ENHANCE.spin ? poses.lui.raise : poses.lui.slam
       : poses.lui && luiCharge ? luiCharge.phase === 'lift' || luiCharge.phase === 'swing' ? poses.lui.hold
         : poses.lui.couch[luiCharge.phase === 'windup' ? CAVALRY_GALLOP_FRAMES : Math.floor(fighter.phase / (Math.PI * 2) * CAVALRY_GALLOP_FRAMES) % CAVALRY_GALLOP_FRAMES]
@@ -8228,7 +9067,9 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     if (yanCat?.phase === 'charge') drawYanColossus(c, 'charge', yanCat.time / CAT.charge, battle.tick)
     if (yanDemon || yanFade > 0) drawYanDemonAura(c, battle.tick, yanDemon ? yanTurn ? 1.8 : 1 : yanFade * 0.8)
     if (meditating && poses.yan) drawYanMeditation(c, rest!.time, battle.tick, yanLift / def.size, true)
-    else if (meditating) drawMeditationAura(c, battle.tick, thorMeditating ? ['#3e9de8', '#b5eaff'] : poses.kunlun ? ['#4aa8ff', '#bfe6ff'] : poses.mei ? MEI_AURA : mengThunder ? ['#f2c230', '#fff1a8'] : mengBody ? ['#ff7a1e', '#ffc9a0'] : poses.meng ? ['#4d9bff', '#9fd2ff'] : undefined)
+    else if (meditating && (!luiRest || luiRest.time >= LUI_REST.spin + LUI_REST.settle)) {
+      drawMeditationAura(c, battle.tick, luiRest ? ['#221f33', '#f6f3ec'] : thorMeditating ? ['#3e9de8', '#b5eaff'] : poses.kunlun ? ['#4aa8ff', '#bfe6ff'] : poses.mei ? MEI_AURA : mengThunder ? ['#f2c230', '#fff1a8'] : mengBody ? ['#ff7a1e', '#ffc9a0'] : poses.meng ? ['#4d9bff', '#9fd2ff'] : undefined)
+    }
     if (meditating && poses.mei && !fighter.zombie) drawMeiMeditate(c, battle.tick, fighter.id)
     if (saintFan) drawSwordFan(c, Math.floor(fighter.swordStack), battle.tick, fighter.id, false, saintJab, saintOrbit, saintScale, fighter.saintBamboo, saintHelpers)
     if (bloodlust || callingHelp) {
@@ -8241,9 +9082,28 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     if (kasaya > 0) drawMengKasaya(c, battle.tick, kasaya, false)
     const luiFade = fighter.species === 'luifeng' && !fighter.zombie ? Math.min(1, fighter.luiAura / 0.5) : 0
     drawLuiAura(c, battle.tick, luiFade, fighter.id, false)
-    c.drawImage(body ?? sprite, -24, -44, 48, 48)
+    if (luiFoot) drawLuiFootFighter(c, poses.lui!.horse, fighter, sprite, def, battle.tick)
+    else c.drawImage(body ?? sprite, -24, -44, 48, 48)
     drawLuiAura(c, battle.tick, luiFade, fighter.id, true)
-    if (poses.lui && fighter.luiEnhance !== null && fighter.luiEnhance < LUI_ENHANCE.spin) drawLuiSpin(c, fighter.luiEnhance / LUI_ENHANCE.spin * Math.PI * 4)
+    if (luiBowVisible) {
+      const charge = luiBowCast?.kind === 'shot' ? LUI_BOW.shot.draw
+        : luiBowCast?.kind === 'ground' ? LUI_BOW.ground.charge : LUI_BOW.rain.charge
+      const target = fighter.target
+      const angle = luiBowCast?.angle ?? (target ? Math.atan2(target.y - target.elevation - 12
+        - (fighter.y + def.radius + LUI_BOW_ANCHOR[1] * def.size - fighter.elevation),
+      (target.x - fighter.x) * fighter.facing - LUI_BOW_ANCHOR[0] * def.size) : 0)
+      // Skills reach full draw quickly and hold it while the ink gathers; a release snaps the string, not eases it.
+      const draw = luiBowCast ? 1 - (1 - Math.min(1, luiBowCast.time / Math.min(charge, 0.35))) ** 2 : 0.1
+      const ink = luiBowCast?.kind === 'ground' ? Math.min(1, luiBowCast.time / charge) : 0
+      drawLuiBow(c, angle, draw, luiBowCast?.released ? luiBowCast.time - charge : -1, ink)
+      if (luiBowCast && luiBowCast.kind !== 'shot' && !luiBowCast.released) {
+        const [x, y] = luiBowTip(angle, LUI_ARROW + (LUI_INK_ARROW - LUI_ARROW) * ink)
+        drawInkCharge(c, x, y, Math.min(1, luiBowCast.time / charge), luiBowCast.time, fighter.id)
+      }
+    }
+    if (luiRest && luiRest.time < LUI_REST.spin) drawLuiSpin(c, luiRest.time / LUI_REST.spin * Math.PI * 4)
+    else if (poses.lui && luiCarnage) drawLuiSpin(c, luiCarnage.time * LUI_CARNAGE.spin)
+    else if (poses.lui && fighter.luiEnhance !== null && fighter.luiEnhance < LUI_ENHANCE.spin) drawLuiSpin(c, fighter.luiEnhance / LUI_ENHANCE.spin * Math.PI * 4)
     if (luiSwing) drawLuiSweepSpear(c, luiSwing.time / LUI_SWEEP.time)
     if (poses.lui && luiCharge) {
       const [tipX, tipY] = LUI_COUCH_TIP
@@ -8757,8 +9617,25 @@ export function renderBattle(c: CanvasRenderingContext2D, battle: Battle, sprite
     else drawLightningBolt(c, length, fade)
     c.restore()
   }
+  for (const area of battle.luiArrowRains) drawLuiRain(c, area, true)
+  for (const shot of battle.luiGroundShots) drawLuiGround(c, shot, true)
+  for (const piercer of battle.luiPiercers) drawLuiPiercer(c, piercer.kind, piercer.x, piercer.y - 18, piercer.vx, piercer.vy)
+  for (const slash of battle.luiInkSlashes) drawLuiInkSlash(c, slash.x, slash.y, slash.angle, slash.radius, slash.facing, slash.time, slash.length)
+  for (const fighter of battle.fighters) {
+    const skill = fighter.luiFootSkill
+    if (!skill) continue
+    if (skill.kind === 'strike' && skill.stage >= 2) {
+      const p = skill.stage === 2 ? Math.min(1, skill.time / LUI_STRIKE.throw) : 1
+      const x = skill.fromX + (skill.x - skill.fromX) * p, y = skill.fromY + (skill.y - skill.fromY) * p, sink = p < 1 ? 0 : 7
+      if (skill.stage < 4 || skill.time < 0.1) drawLuiThrownSpear(c, x + Math.cos(skill.angle) * sink, y + Math.sin(skill.angle) * sink, skill.angle)
+    } else if (skill.kind === 'stars') {
+      drawLuiStars(c, fighter.x, fighter.y + fighterDef(fighter).radius, skill.stage === 0 ? skill.time * 14 : 0,
+        skill.stage === 0 ? -1 : Math.min(1, skill.time / LUI_STARS.plant))
+    }
+  }
   for (const star of battle.shuriken) {
-    if (star.kind === 'sword') {
+    if (star.kind === 'arrow') drawLuiArrow(c, star.x, star.y - star.elevation, Math.atan2(star.vy - star.vz, star.vx))
+    else if (star.kind === 'sword') {
       // Swords leave the fan upright and swing horizontal before flying.
       const turn = star.ride ? 1 : Math.min(1, (SWORD_SAINT_SWORDS.life - star.life) / SWORD_SAINT_SWORDS.aim)
       const aim = Math.atan2(star.vy, star.vx), upright = -Math.PI / 2
